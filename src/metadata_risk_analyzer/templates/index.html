@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Metadata Risk Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero">
+        <p class="eyebrow">Privacy Forensics</p>
+        <h1>Metadata Risk Analyzer</h1>
+        <p class="hero-copy">
+          Upload image files to inspect EXIF metadata, score privacy risk, and explain how an attacker
+          could use that data for geolocation, routine tracking, or device correlation.
+        </p>
+      </section>
+
+      <section class="panel upload-panel">
+        <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" class="upload-form">
+          <label for="images" class="dropzone">
+            <span class="dropzone-title">Select one or more images</span>
+            <span class="dropzone-copy">Supports JPG, PNG, TIFF, and WebP up to 16 MB.</span>
+            <input id="images" name="images" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp" multiple>
+          </label>
+          <button type="submit">Analyze Metadata</button>
+        </form>
+
+        {% if errors %}
+          <div class="messages error-list">
+            {% for error in errors %}
+              <p>{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="panel upload-panel">
+        <form action="{{ url_for('demo') }}" method="post" class="demo-form">
+          <div>
+            <p class="report-label">Quick Demo</p>
+            <h2 class="demo-title">Try preset metadata scenarios</h2>
+            <p class="dropzone-copy">
+              Useful when screenshots or downloaded images have little to no EXIF metadata.
+            </p>
+          </div>
+          <div class="demo-controls">
+            <select name="scenario" aria-label="Select demo scenario">
+              <option value="gps">GPS + Timestamp + Device</option>
+              <option value="routine">Routine Tracking</option>
+              <option value="serial">Serial + Unique Identifier</option>
+            </select>
+            <button type="submit">Load Demo Report</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel upload-panel">
+        <form action="{{ url_for('lab_scan') }}" method="post" class="demo-form">
+          <div>
+            <p class="report-label">Localhost Lab</p>
+            <h2 class="demo-title">Scan fake hosts and discover exposed images</h2>
+            <p class="dropzone-copy">
+              This checks the local CTF lab on ports 8001 to 8004 and discovers image paths, including hidden subdirectories.
+            </p>
+          </div>
+          <div class="demo-controls">
+            <button type="submit">Run Lab Scan</button>
+          </div>
+        </form>
+
+        <form action="{{ url_for('lab_loot') }}" method="post" class="demo-form inline-top-gap">
+          <div>
+            <p class="dropzone-copy">
+              After running the collector, analyze everything in <code>labs/local_ctf/loot</code> without manually uploading files.
+            </p>
+          </div>
+          <div class="demo-controls">
+            <button type="submit">Analyze Collected Loot</button>
+          </div>
+        </form>
+
+        {% if scan_results %}
+          <div class="scan-grid">
+            {% for host in scan_results %}
+              <article class="scan-card">
+                <div class="scan-header">
+                  <strong>{{ host.host }}</strong>
+                  <span class="scan-status scan-status-{{ host.status }}">{{ host.status|upper }}</span>
+                </div>
+                <p class="scan-url">{{ host.base_url }}</p>
+                {% if host.links %}
+                  <p class="scan-label">Links</p>
+                  <ul class="scan-list">
+                    {% for link in host.links %}
+                      <li>{{ link }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+                {% if host.images %}
+                  <p class="scan-label">Discovered Images</p>
+                  <ul class="scan-list">
+                    {% for image in host.images %}
+                      <li>{{ image }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      {% if reports %}
+        <section class="results-grid">
+          {% for report in reports %}
+            <article class="panel report-card">
+              <div class="report-header">
+                <div>
+                  <p class="report-label">Image</p>
+                  <h2>{{ report.image_path }}</h2>
+                </div>
+                <div class="score-pill score-{{ report.risk_level|lower }}">
+                  <span>{{ report.risk_level }}</span>
+                  <strong>{{ report.risk_score }}/100</strong>
+                </div>
+              </div>
+
+              <div class="report-section">
+                <h3>Findings</h3>
+                <ul class="card-list">
+                  {% for finding in report.findings %}
+                    <li>
+                      <strong>{{ finding.title }}</strong>
+                      <p>{{ finding.evidence }}</p>
+                      <p class="recommendation">Recommendation: {{ finding.recommendation }}</p>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+
+              <div class="report-section">
+                <h3>Attack Scenarios</h3>
+                <ul class="card-list">
+                  {% for scenario in report.attack_scenarios %}
+                    <li>
+                      <strong>{{ scenario.title }}</strong>
+                      <p>{{ scenario.description }}</p>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+
+              <div class="report-section">
+                <h3>Metadata Preview</h3>
+                <dl class="metadata-grid">
+                  {% for key, value in report.metadata.items() %}
+                    <div>
+                      <dt>{{ key }}</dt>
+                      <dd>{{ value }}</dd>
+                    </div>
+                  {% endfor %}
+                </dl>
+              </div>
+            </article>
+          {% endfor %}
+        </section>
+      {% endif %}
+    </main>
+  </body>
+</html>
