@@ -112,6 +112,31 @@
         {% endif %}
       </section>
 
+      <section class="panel upload-panel" id="network-map-panel">
+        <div class="demo-form">
+          <div>
+            <p class="report-label">Network Topology</p>
+            <h2 class="demo-title">Live network map of lab hosts</h2>
+            <p class="dropzone-copy">
+              Real-time view of all CTF hosts and their connectivity. Run Lab Scan first to probe status.
+            </p>
+          </div>
+          <div class="demo-controls">
+            <button type="button" id="refresh-map-btn">Refresh Map</button>
+            <span id="map-legend">
+              <span class="legend-dot legend-open"></span> Open &nbsp;
+              <span class="legend-dot legend-closed"></span> Closed &nbsp;
+              <span class="legend-dot legend-switch"></span> Switch &nbsp;
+              <span class="legend-dot legend-attacker"></span> You
+            </span>
+          </div>
+        </div>
+        <div id="network-map-container">
+          <svg id="network-map"></svg>
+          <div id="map-tooltip" class="map-tooltip"></div>
+        </div>
+      </section>
+
       {% if reports %}
         <section class="results-grid">
           {% for report in reports %}
@@ -168,5 +193,153 @@
         </section>
       {% endif %}
     </main>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+    <script>
+    (function () {
+      const NODE_R = { attacker: 28, switch: 22, host: 20 };
+      const COLORS = {
+        attacker: { fill: "#b14d24", stroke: "#7f3416", label: "#fff" },
+        switch:   { fill: "#4a5568", stroke: "#2d3748", label: "#fff" },
+        open:     { fill: "#2f6e49", stroke: "#1e4d32", label: "#fff" },
+        closed:   { fill: "#8c1c13", stroke: "#5c1209", label: "#fff" },
+      };
+
+      let simulation, svg, linkSel, nodeSel, labelSel;
+
+      function getColor(d) {
+        if (d.type === "attacker") return COLORS.attacker;
+        if (d.type === "switch")   return COLORS.switch;
+        return d.status === "open" ? COLORS.open : COLORS.closed;
+      }
+
+      function initMap() {
+        const container = document.getElementById("network-map-container");
+        const W = container.clientWidth || 700;
+        const H = 340;
+
+        svg = d3.select("#network-map")
+          .attr("viewBox", `0 0 ${W} ${H}`)
+          .attr("width", "100%")
+          .attr("height", H);
+
+        svg.append("defs").append("marker")
+          .attr("id", "arrow")
+          .attr("viewBox", "0 -5 10 10")
+          .attr("refX", 32).attr("refY", 0)
+          .attr("markerWidth", 6).attr("markerHeight", 6)
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M0,-5L10,0L0,5")
+          .attr("fill", "rgba(84,60,37,0.35)");
+
+        svg.append("g").attr("class", "links");
+        svg.append("g").attr("class", "nodes");
+        svg.append("g").attr("class", "labels");
+
+        simulation = d3.forceSimulation()
+          .force("link", d3.forceLink().id(d => d.id).distance(120))
+          .force("charge", d3.forceManyBody().strength(-320))
+          .force("center", d3.forceCenter(W / 2, H / 2))
+          .force("collision", d3.forceCollide(45));
+
+        fetchAndRender();
+      }
+
+      function fetchAndRender() {
+        fetch("/lab/network")
+          .then(r => r.json())
+          .then(data => render(data))
+          .catch(() => {
+            document.getElementById("network-map-container").innerHTML =
+              '<p style="padding:1rem;color:var(--critical)">Could not load network data. Make sure the Flask server is running.</p>';
+          });
+      }
+
+      function render({ nodes, links }) {
+        const tooltip = document.getElementById("map-tooltip");
+        const container = document.getElementById("network-map-container");
+        const W = container.clientWidth || 700;
+        const H = 340;
+
+        // Links
+        linkSel = svg.select(".links")
+          .selectAll("line")
+          .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`)
+          .join("line")
+          .attr("stroke", "rgba(84,60,37,0.25)")
+          .attr("stroke-width", 2)
+          .attr("marker-end", "url(#arrow)");
+
+        // Nodes
+        nodeSel = svg.select(".nodes")
+          .selectAll("circle")
+          .data(nodes, d => d.id)
+          .join(
+            enter => enter.append("circle")
+              .attr("r", d => NODE_R[d.type] || 20)
+              .attr("cx", W / 2).attr("cy", H / 2)
+              .call(drag(simulation)),
+            update => update,
+            exit => exit.remove()
+          )
+          .attr("fill", d => getColor(d).fill)
+          .attr("stroke", d => getColor(d).stroke)
+          .attr("stroke-width", 2.5)
+          .style("cursor", "pointer")
+          .style("filter", "drop-shadow(0 3px 8px rgba(0,0,0,0.18))")
+          .on("mouseover", (event, d) => {
+            tooltip.innerHTML = `<strong>${d.label}</strong><br>${d.detail || ""}`;
+            tooltip.style.display = "block";
+          })
+          .on("mousemove", event => {
+            const rect = container.getBoundingClientRect();
+            tooltip.style.left = (event.clientX - rect.left + 12) + "px";
+            tooltip.style.top  = (event.clientY - rect.top  - 10) + "px";
+          })
+          .on("mouseleave", () => { tooltip.style.display = "none"; });
+
+        // Labels
+        labelSel = svg.select(".labels")
+          .selectAll("text")
+          .data(nodes, d => d.id)
+          .join("text")
+          .text(d => d.label)
+          .attr("text-anchor", "middle")
+          .attr("dy", "0.35em")
+          .attr("fill", d => getColor(d).label)
+          .attr("font-size", d => d.type === "attacker" ? "10px" : "11px")
+          .attr("font-family", "Georgia, serif")
+          .attr("font-weight", "700")
+          .style("pointer-events", "none");
+
+        simulation.nodes(nodes).on("tick", ticked);
+        simulation.force("link").links(links);
+        simulation.alpha(0.6).restart();
+      }
+
+      function ticked() {
+        linkSel
+          .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+        nodeSel
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+        labelSel
+          .attr("x", d => d.x)
+          .attr("y", d => d.y);
+      }
+
+      function drag(sim) {
+        return d3.drag()
+          .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on("drag",  (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on("end",   (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; });
+      }
+
+      document.getElementById("refresh-map-btn").addEventListener("click", fetchAndRender);
+
+      window.addEventListener("DOMContentLoaded", initMap);
+    })();
+    </script>
   </body>
 </html>

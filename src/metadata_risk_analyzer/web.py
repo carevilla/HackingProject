@@ -7,7 +7,7 @@ from urllib.parse import urljoin, urlparse
 import urllib.error
 import urllib.request
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
@@ -127,7 +127,31 @@ def create_app() -> Flask:
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=_scan_local_lab(),
         )
-
+ 
+    @app.get("/lab/network")
+    def lab_network():
+        scan = _scan_local_lab()
+        nodes = [
+            {"id": "scanner", "label": "Scanner\n(you)", "type": "attacker", "status": "active", "detail": "Local machine"},
+            {"id": "s1", "label": "Switch s1", "type": "switch", "status": "active", "detail": "Virtual switch"},
+        ]
+        links = [{"source": "scanner", "target": "s1"}]
+        for host in scan:
+            image_count = len(host.get("images", []))
+            link_count = len(host.get("links", []))
+            nodes.append({
+                "id": host["host"],
+                "label": host["host"],
+                "type": "host",
+                "status": host["status"],
+                "detail": f"{host['base_url']} · {image_count} image(s) · {link_count} link(s)",
+                "url": host["base_url"],
+                "images": image_count,
+                "links": link_count,
+            })
+            links.append({"source": "s1", "target": host["host"]})
+        return jsonify({"nodes": nodes, "links": links})
+    
     return app
 
 

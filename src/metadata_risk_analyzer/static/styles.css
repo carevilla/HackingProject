@@ -337,6 +337,60 @@ button:hover {
   word-break: break-word;
 }
 
+/* ── Network map ─────────────────────────────────────────── */
+#network-map-container {
+  position: relative;
+  margin-top: 1.25rem;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(84, 60, 37, 0.1);
+  min-height: 340px;
+}
+
+#network-map {
+  display: block;
+  width: 100%;
+}
+
+.map-tooltip {
+  display: none;
+  position: absolute;
+  background: rgba(31, 26, 23, 0.92);
+  color: #fffaf5;
+  font-family: Georgia, serif;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  max-width: 280px;
+}
+
+#map-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 2px;
+}
+
+.legend-open     { background: #2f6e49; }
+.legend-closed   { background: #8c1c13; }
+.legend-switch   { background: #4a5568; }
+.legend-attacker { background: #b14d24; }
+
 @media (max-width: 720px) {
   .page-shell {
     width: min(100% - 1rem, 1100px);
