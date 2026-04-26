@@ -118,7 +118,7 @@
             <p class="report-label">Network Topology</p>
             <h2 class="demo-title">Live network map of lab hosts</h2>
             <p class="dropzone-copy">
-              Real-time view of all CTF hosts and their connectivity. Run Lab Scan first to probe status.
+              Real-time view of all CTF hosts and their connectivity. Add custom routers, switches, and hosts below.
             </p>
           </div>
           <div class="demo-controls">
@@ -126,14 +126,57 @@
             <span id="map-legend">
               <span class="legend-dot legend-open"></span> Open &nbsp;
               <span class="legend-dot legend-closed"></span> Closed &nbsp;
+              <span class="legend-dot legend-router"></span> Router &nbsp;
               <span class="legend-dot legend-switch"></span> Switch &nbsp;
               <span class="legend-dot legend-attacker"></span> You
             </span>
           </div>
         </div>
+
         <div id="network-map-container">
           <svg id="network-map"></svg>
           <div id="map-tooltip" class="map-tooltip"></div>
+        </div>
+
+        <!-- Add Node Form -->
+        <div id="add-node-panel">
+          <p class="report-label" style="margin-bottom:0.75rem">Add Node</p>
+          <div id="add-node-form">
+            <div class="add-node-row">
+              <div class="add-node-field">
+                <label class="add-node-label" for="node-id">ID / hostname</label>
+                <input id="node-id" type="text" placeholder="e.g. r3, host-9" autocomplete="off">
+              </div>
+              <div class="add-node-field">
+                <label class="add-node-label" for="node-label">Display label</label>
+                <input id="node-label" type="text" placeholder="optional" autocomplete="off">
+              </div>
+              <div class="add-node-field">
+                <label class="add-node-label" for="node-type">Type</label>
+                <select id="node-type">
+                  <option value="host">Host</option>
+                  <option value="router">Router</option>
+                  <option value="switch">Switch</option>
+                </select>
+              </div>
+              <div class="add-node-field">
+                <label class="add-node-label" for="node-connect">Connect to</label>
+                <select id="node-connect">
+                  <option value="">(none)</option>
+                </select>
+              </div>
+              <div class="add-node-field">
+                <label class="add-node-label" for="node-detail">Detail / note</label>
+                <input id="node-detail" type="text" placeholder="optional description" autocomplete="off">
+              </div>
+              <div class="add-node-field add-node-submit">
+                <label class="add-node-label">&nbsp;</label>
+                <button type="button" id="add-node-btn">Add</button>
+              </div>
+            </div>
+            <p id="add-node-error" class="add-node-error" style="display:none"></p>
+          </div>
+          <div id="custom-node-list"></div>
         </div>
       </section>
 
@@ -196,26 +239,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
     <script>
     (function () {
-      const NODE_R = { attacker: 28, switch: 22, host: 20 };
+      const NODE_R = { attacker: 28, router: 24, switch: 22, host: 20 };
       const COLORS = {
         attacker: { fill: "#b14d24", stroke: "#7f3416", label: "#fff" },
+        router:   { fill: "#6b46c1", stroke: "#553c9a", label: "#fff" },
         switch:   { fill: "#4a5568", stroke: "#2d3748", label: "#fff" },
         open:     { fill: "#2f6e49", stroke: "#1e4d32", label: "#fff" },
         closed:   { fill: "#8c1c13", stroke: "#5c1209", label: "#fff" },
+        unknown:  { fill: "#5a5a5a", stroke: "#3a3a3a", label: "#fff" },
       };
 
       let simulation, svg, linkSel, nodeSel, labelSel;
 
       function getColor(d) {
         if (d.type === "attacker") return COLORS.attacker;
+        if (d.type === "router")   return COLORS.router;
         if (d.type === "switch")   return COLORS.switch;
-        return d.status === "open" ? COLORS.open : COLORS.closed;
+        if (d.status === "open")   return COLORS.open;
+        if (d.status === "unknown") return COLORS.unknown;
+        return COLORS.closed;
       }
 
       function initMap() {
         const container = document.getElementById("network-map-container");
         const W = container.clientWidth || 700;
-        const H = 340;
+        const H = 360;
 
         svg = d3.select("#network-map")
           .attr("viewBox", `0 0 ${W} ${H}`)
@@ -237,10 +285,15 @@
         svg.append("g").attr("class", "labels");
 
         simulation = d3.forceSimulation()
-          .force("link", d3.forceLink().id(d => d.id).distance(120))
-          .force("charge", d3.forceManyBody().strength(-320))
+          .force("link", d3.forceLink().id(d => d.id).distance(d => {
+            const s = d.source.type || "", t = d.target.type || "";
+            if (s === "attacker" || t === "router") return 140;
+            if (s === "router" || s === "switch")   return 110;
+            return 90;
+          }))
+          .force("charge", d3.forceManyBody().strength(-380))
           .force("center", d3.forceCenter(W / 2, H / 2))
-          .force("collision", d3.forceCollide(45));
+          .force("collision", d3.forceCollide(50));
 
         fetchAndRender();
       }
@@ -248,10 +301,10 @@
       function fetchAndRender() {
         fetch("/lab/network")
           .then(r => r.json())
-          .then(data => render(data))
+          .then(data => { render(data); refreshConnectDropdown(data.nodes); })
           .catch(() => {
             document.getElementById("network-map-container").innerHTML =
-              '<p style="padding:1rem;color:var(--critical)">Could not load network data. Make sure the Flask server is running.</p>';
+              '<p style="padding:1rem;color:var(--critical)">Could not load network data.</p>';
           });
       }
 
@@ -259,18 +312,20 @@
         const tooltip = document.getElementById("map-tooltip");
         const container = document.getElementById("network-map-container");
         const W = container.clientWidth || 700;
-        const H = 340;
+        const H = 360;
 
-        // Links
         linkSel = svg.select(".links")
           .selectAll("line")
-          .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`)
+          .data(links, d => `${d.source.id||d.source}-${d.target.id||d.target}`)
           .join("line")
-          .attr("stroke", "rgba(84,60,37,0.25)")
+          .attr("stroke", "rgba(84,60,37,0.22)")
           .attr("stroke-width", 2)
+          .attr("stroke-dasharray", d => {
+            const s = typeof d.source === "object" ? d.source : {type:""};
+            return s.builtin === false || (typeof d.target === "object" && d.target.builtin === false) ? "6 4" : "none";
+          })
           .attr("marker-end", "url(#arrow)");
 
-        // Nodes
         nodeSel = svg.select(".nodes")
           .selectAll("circle")
           .data(nodes, d => d.id)
@@ -280,15 +335,17 @@
               .attr("cx", W / 2).attr("cy", H / 2)
               .call(drag(simulation)),
             update => update,
-            exit => exit.remove()
+            exit  => exit.remove()
           )
-          .attr("fill", d => getColor(d).fill)
+          .attr("r", d => NODE_R[d.type] || 20)
+          .attr("fill",   d => getColor(d).fill)
           .attr("stroke", d => getColor(d).stroke)
-          .attr("stroke-width", 2.5)
+          .attr("stroke-width", d => d.builtin === false ? 2 : 2.5)
+          .attr("stroke-dasharray", d => d.builtin === false ? "5 3" : "none")
           .style("cursor", "pointer")
-          .style("filter", "drop-shadow(0 3px 8px rgba(0,0,0,0.18))")
           .on("mouseover", (event, d) => {
-            tooltip.innerHTML = `<strong>${d.label}</strong><br>${d.detail || ""}`;
+            tooltip.innerHTML = `<strong>${d.label.replace("\n", " ")}</strong><br>${d.detail || ""}` +
+              (d.builtin === false ? '<br><em style="opacity:.7">user-added</em>' : "");
             tooltip.style.display = "block";
           })
           .on("mousemove", event => {
@@ -298,19 +355,21 @@
           })
           .on("mouseleave", () => { tooltip.style.display = "none"; });
 
-        // Labels
         labelSel = svg.select(".labels")
           .selectAll("text")
           .data(nodes, d => d.id)
           .join("text")
-          .text(d => d.label)
+          .text(d => d.label.split("\n")[0])
           .attr("text-anchor", "middle")
           .attr("dy", "0.35em")
-          .attr("fill", d => getColor(d).label)
-          .attr("font-size", d => d.type === "attacker" ? "10px" : "11px")
+          .attr("fill",        d => getColor(d).label)
+          .attr("font-size",   d => d.type === "attacker" ? "10px" : "11px")
           .attr("font-family", "Georgia, serif")
           .attr("font-weight", "700")
           .style("pointer-events", "none");
+
+        // Refresh custom node list
+        refreshCustomList(nodes.filter(n => n.builtin === false));
 
         simulation.nodes(nodes).on("tick", ticked);
         simulation.force("link").links(links);
@@ -321,22 +380,110 @@
         linkSel
           .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
           .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-        nodeSel
-          .attr("cx", d => d.x)
-          .attr("cy", d => d.y);
-        labelSel
-          .attr("x", d => d.x)
-          .attr("y", d => d.y);
+        nodeSel.attr("cx", d => d.x).attr("cy", d => d.y);
+        labelSel.attr("x", d => d.x).attr("y", d => d.y);
       }
 
       function drag(sim) {
         return d3.drag()
-          .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-          .on("drag",  (event, d) => { d.fx = event.x; d.fy = event.y; })
-          .on("end",   (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; });
+          .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; });
+      }
+
+      // ── Dropdown refresh ──────────────────────────────────────────────────
+      function refreshConnectDropdown(nodes) {
+        const sel = document.getElementById("node-connect");
+        const current = sel.value;
+        sel.innerHTML = '<option value="">(none)</option>';
+        nodes.forEach(n => {
+          const opt = document.createElement("option");
+          opt.value = n.id;
+          opt.textContent = n.id + (n.type !== "host" ? ` (${n.type})` : "");
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+      }
+
+      // ── Custom node table ─────────────────────────────────────────────────
+      function refreshCustomList(customNodes) {
+        const el = document.getElementById("custom-node-list");
+        if (!customNodes.length) { el.innerHTML = ""; return; }
+
+        let html = '<table class="custom-node-table"><thead><tr><th>ID</th><th>Label</th><th>Type</th><th>Detail</th><th></th></tr></thead><tbody>';
+        customNodes.forEach(n => {
+          html += `<tr>
+            <td>${esc(n.id)}</td>
+            <td>${esc(n.label)}</td>
+            <td><span class="node-type-badge node-type-${n.type}">${n.type}</span></td>
+            <td class="node-detail-cell">${esc(n.detail)}</td>
+            <td><button class="delete-node-btn" data-id="${esc(n.id)}">Remove</button></td>
+          </tr>`;
+        });
+        html += "</tbody></table>";
+        el.innerHTML = html;
+
+        el.querySelectorAll(".delete-node-btn").forEach(btn => {
+          btn.addEventListener("click", () => deleteNode(btn.dataset.id));
+        });
+      }
+
+      function esc(s) {
+        return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      }
+
+      // ── Add node ──────────────────────────────────────────────────────────
+      async function addNode() {
+        const id        = document.getElementById("node-id").value.trim();
+        const label     = document.getElementById("node-label").value.trim() || id;
+        const type      = document.getElementById("node-type").value;
+        const connect   = document.getElementById("node-connect").value;
+        const detail    = document.getElementById("node-detail").value.trim() || "User-added " + type;
+        const errEl     = document.getElementById("add-node-error");
+
+        errEl.style.display = "none";
+        if (!id) { showError("ID / hostname is required."); return; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(id)) { showError("ID may only contain letters, numbers, hyphens, underscores."); return; }
+
+        const btn = document.getElementById("add-node-btn");
+        btn.disabled = true;
+        try {
+          const resp = await fetch("/lab/network/node", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, label, type, connect_to: connect, detail }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) { showError(data.error || "Server error"); return; }
+          // Clear form
+          ["node-id","node-label","node-detail"].forEach(i => document.getElementById(i).value = "");
+          fetchAndRender();
+        } catch(e) {
+          showError("Network error — is the Flask server running?");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function deleteNode(nodeId) {
+        try {
+          const resp = await fetch(`/lab/network/node/${encodeURIComponent(nodeId)}`, { method: "DELETE" });
+          if (!resp.ok) { const d = await resp.json(); showError(d.error || "Delete failed"); return; }
+          fetchAndRender();
+        } catch(e) {
+          showError("Network error");
+        }
+      }
+
+      function showError(msg) {
+        const el = document.getElementById("add-node-error");
+        el.textContent = msg;
+        el.style.display = "block";
       }
 
       document.getElementById("refresh-map-btn").addEventListener("click", fetchAndRender);
+      document.getElementById("add-node-btn").addEventListener("click", addNode);
+      document.getElementById("node-id").addEventListener("keydown", e => { if (e.key === "Enter") addNode(); });
 
       window.addEventListener("DOMContentLoaded", initMap);
     })();

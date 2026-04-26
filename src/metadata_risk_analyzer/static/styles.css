@@ -345,7 +345,7 @@ button:hover {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.45);
   border: 1px solid rgba(84, 60, 37, 0.1);
-  min-height: 340px;
+  min-height: 480px;
 }
 
 #network-map {
@@ -388,8 +388,137 @@ button:hover {
 
 .legend-open     { background: #2f6e49; }
 .legend-closed   { background: #8c1c13; }
+.legend-router   { background: #2c5282; }
 .legend-switch   { background: #4a5568; }
 .legend-attacker { background: #b14d24; }
+.legend-router   { background: #6b46c1; }
+
+/* ── Add-node form ──────────────────────────────────────────── */
+#add-node-panel {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(84, 60, 37, 0.1);
+}
+
+.add-node-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: flex-end;
+}
+
+.add-node-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 120px;
+}
+
+.add-node-field.add-node-submit {
+  flex: 0 0 auto;
+}
+
+.add-node-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-family: Georgia, serif;
+}
+
+#add-node-form input,
+#add-node-form select {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(84, 60, 37, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+  font-family: Georgia, serif;
+  color: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#add-node-form input:focus,
+#add-node-form select:focus {
+  border-color: rgba(84, 60, 37, 0.5);
+}
+
+.add-node-error {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: #8c1c13;
+  font-family: Georgia, serif;
+}
+
+/* ── Custom node table ─────────────────────────────────────── */
+.custom-node-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  font-family: Georgia, serif;
+}
+
+.custom-node-table th {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(84, 60, 37, 0.1);
+}
+
+.custom-node-table td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid rgba(84, 60, 37, 0.06);
+  vertical-align: middle;
+}
+
+.node-detail-cell {
+  color: var(--muted);
+  font-size: 0.8rem;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.node-type-host   { background: rgba(47,110,73,0.15); color: #1e4d32; }
+.node-type-router { background: rgba(107,70,193,0.15); color: #553c9a; }
+.node-type-switch { background: rgba(74,85,104,0.15); color: #2d3748; }
+
+.delete-node-btn {
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  background: rgba(140, 28, 19, 0.08);
+  color: #8c1c13;
+  border: 1px solid rgba(140, 28, 19, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: Georgia, serif;
+  transition: background 0.15s;
+}
+
+.delete-node-btn:hover {
+  background: rgba(140, 28, 19, 0.18);
+}
+
 
 @media (max-width: 720px) {
   .page-shell {

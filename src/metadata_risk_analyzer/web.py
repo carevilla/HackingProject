@@ -17,12 +17,28 @@ from .demo_data import DEMO_SCENARIOS, build_demo_report
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp"}
 LOCAL_LAB_HOSTS = {
-    "alpha": "http://127.0.0.1:8001/",
-    "beta": "http://127.0.0.1:8002/",
-    "gamma": "http://127.0.0.1:8003/",
+    # Subnet A — behind switch s1 (via edge router r2)
+    "alpha":   "http://127.0.0.1:8001/",
+    "beta":    "http://127.0.0.1:8002/",
+    "gamma":   "http://127.0.0.1:8003/",
     "archive": "http://127.0.0.1:8004/",
+    # Subnet B — behind switch s2 (via core router r1 directly)
+    "delta":   "http://127.0.0.1:8005/",
+    "epsilon": "http://127.0.0.1:8006/",
+    "zeta":    "http://127.0.0.1:8007/",
+    "omega":   "http://127.0.0.1:8008/",
+}
+
+# Which switch each host sits behind (drives topology graph)
+HOST_SUBNET: dict[str, str] = {
+    "alpha": "s1", "beta": "s1", "gamma": "s1", "archive": "s1",
+    "delta": "s2", "epsilon": "s2", "zeta": "s2", "omega": "s2",
 }
 LOCAL_LOOT_DIR = Path("labs/local_ctf/loot")
+
+# ── In-memory store for user-added nodes / routers ───────────────────────────
+_custom_nodes: list[dict] = []
+_custom_links: list[dict] = []
 
 
 def create_app() -> Flask:
@@ -127,31 +143,112 @@ def create_app() -> Flask:
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=_scan_local_lab(),
         )
- 
+
     @app.get("/lab/network")
     def lab_network():
         scan = _scan_local_lab()
+        open_count  = sum(1 for h in scan if h["status"] == "open")
+        total_count = len(scan)
+
         nodes = [
-            {"id": "scanner", "label": "Scanner\n(you)", "type": "attacker", "status": "active", "detail": "Local machine"},
-            {"id": "s1", "label": "Switch s1", "type": "switch", "status": "active", "detail": "Virtual switch"},
+            {"id": "scanner", "label": "Scanner\n(you)", "type": "attacker",
+             "status": "active", "detail": "Your local machine — initiating scans", "builtin": True},
+            {"id": "r1", "label": "Router r1\n(core)", "type": "router",
+             "status": "active",
+             "detail": f"Core router — {open_count}/{total_count} hosts reachable across both subnets",
+             "builtin": True},
+            {"id": "r2", "label": "Router r2\n(edge)", "type": "router",
+             "status": "active", "detail": "Edge router — fronts Subnet A (s1) behind NAT", "builtin": True},
+            {"id": "s1", "label": "Switch s1\nSubnet A", "type": "switch",
+             "status": "active", "detail": "10.0.1.0/24 — alpha, beta, gamma, archive", "builtin": True},
+            {"id": "s2", "label": "Switch s2\nSubnet B", "type": "switch",
+             "status": "active", "detail": "10.0.2.0/24 — delta, epsilon, zeta, omega", "builtin": True},
         ]
-        links = [{"source": "scanner", "target": "s1"}]
+
+        links = [
+            {"source": "scanner", "target": "r1"},
+            {"source": "r1",      "target": "r2"},
+            {"source": "r1",      "target": "s2"},
+            {"source": "r2",      "target": "s1"},
+        ]
+
         for host in scan:
             image_count = len(host.get("images", []))
-            link_count = len(host.get("links", []))
+            link_count  = len(host.get("links",  []))
+            switch_id   = HOST_SUBNET.get(host["host"], "s1")
             nodes.append({
-                "id": host["host"],
-                "label": host["host"],
-                "type": "host",
+                "id":     host["host"],
+                "label":  host["host"],
+                "type":   "host",
                 "status": host["status"],
                 "detail": f"{host['base_url']} · {image_count} image(s) · {link_count} link(s)",
-                "url": host["base_url"],
+                "url":    host["base_url"],
                 "images": image_count,
-                "links": link_count,
+                "links":  link_count,
+                "builtin": True,
             })
-            links.append({"source": "s1", "target": host["host"]})
+            links.append({"source": switch_id, "target": host["host"]})
+
+        nodes.extend(_custom_nodes)
+        links.extend(_custom_links)
+
         return jsonify({"nodes": nodes, "links": links})
-    
+
+    # ── Custom node management ────────────────────────────────────────────────
+
+    @app.post("/lab/network/node")
+    def add_network_node():
+        data = request.get_json(force=True)
+        node_id    = (data.get("id") or "").strip()
+        label      = (data.get("label") or node_id).strip()
+        node_type  = data.get("type", "host")
+        detail     = data.get("detail", "User-added node")
+        connect_to = (data.get("connect_to") or "").strip()
+
+        if not node_id:
+            return jsonify({"error": "id is required"}), 400
+
+        builtin_ids = {"scanner", "r1", "r2", "s1", "s2"} | set(LOCAL_LAB_HOSTS.keys())
+        existing_ids = {n["id"] for n in _custom_nodes} | builtin_ids
+        if node_id in existing_ids:
+            return jsonify({"error": f"Node '{node_id}' already exists"}), 409
+
+        if node_type not in ("host", "router", "switch"):
+            return jsonify({"error": "type must be host, router, or switch"}), 400
+
+        new_node = {
+            "id":      node_id,
+            "label":   label,
+            "type":    node_type,
+            "status":  "active" if node_type in ("router", "switch") else "unknown",
+            "detail":  detail,
+            "builtin": False,
+        }
+        _custom_nodes.append(new_node)
+
+        if connect_to:
+            _custom_links.append({"source": connect_to, "target": node_id})
+
+        return jsonify({"ok": True, "node": new_node}), 201
+
+    @app.delete("/lab/network/node/<node_id>")
+    def delete_network_node(node_id):
+        before = len(_custom_nodes)
+        _custom_nodes[:] = [n for n in _custom_nodes if n["id"] != node_id]
+        _custom_links[:] = [
+            lk for lk in _custom_links
+            if lk["source"] != node_id and lk["target"] != node_id
+        ]
+        if len(_custom_nodes) == before:
+            return jsonify({"error": "Node not found or is built-in"}), 404
+        return jsonify({"ok": True}), 200
+
+    @app.get("/lab/network/nodes")
+    def list_all_node_ids():
+        builtin_ids = ["scanner", "r1", "r2", "s1", "s2"] + list(LOCAL_LAB_HOSTS.keys())
+        custom_ids  = [n["id"] for n in _custom_nodes]
+        return jsonify({"all_ids": builtin_ids + custom_ids, "custom": _custom_nodes})
+
     return app
 
 
