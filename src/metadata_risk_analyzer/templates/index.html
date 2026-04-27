@@ -64,6 +64,298 @@
         {% endif %}
       </section>
 
+      {% if location_clusters %}
+        {% set hotspot_count = location_clusters|selectattr('is_hotspot')|list|length %}
+        {% set total_geo = location_clusters|sum(attribute='count') %}
+        <section class="panel location-map-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Location Map</p>
+            <h2 class="demo-title">
+              {{ total_geo }} geotagged image{{ '' if total_geo == 1 else 's' }}
+              across {{ location_clusters|length }} location{{ '' if location_clusters|length == 1 else 's' }}
+              {% if hotspot_count %} · {{ hotspot_count }} hotspot{{ '' if hotspot_count == 1 else 's' }}{% endif %}
+            </h2>
+            <p class="dropzone-copy">
+              All GPS-tagged images plotted on a single map. A cluster of 3+ photos within ~150m is flagged as a hotspot — these are the locations someone visits often (home, work, school, frequent venues).
+            </p>
+          </div>
+          <div id="location-map" data-clusters='{{ location_clusters|tojson }}'></div>
+          {% if hotspot_count %}
+            <ul class="hotspot-list">
+              {% for c in location_clusters if c.is_hotspot %}
+                <li class="hotspot-item">
+                  <div class="hotspot-info">
+                    <span class="hotspot-coords">{{ c.centroid_lat }}, {{ c.centroid_lon }}</span>
+                    <span class="hotspot-count">{{ c.count }} images · ~{{ c.radius_m|round|int }}m spread</span>
+                  </div>
+                  <a class="hotspot-link"
+                     href="https://www.google.com/maps/search/?api=1&query={{ c.centroid_lat }},{{ c.centroid_lon }}"
+                     target="_blank"
+                     rel="noopener noreferrer">Open in Google Maps</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if timeline %}
+        {% set total_events = timeline.events|length %}
+        {% set max_hour = timeline.hour_histogram|max %}
+        {% set max_weekday = timeline.weekday_histogram|max %}
+        <section class="panel timeline-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Timeline</p>
+            <h2 class="demo-title">{{ total_events }} timestamped image{{ '' if total_events == 1 else 's' }} over {{ timeline.span_human }}</h2>
+            <p class="dropzone-copy">
+              Photos sorted by capture time. Repeating peaks in the hour-of-day or day-of-week distributions reveal routine. Long gaps suggest device-off periods, travel, or selective deletion.
+            </p>
+          </div>
+
+          <div class="timeline-year-bar">
+            <label for="timeline-year" class="timeline-year-label">Year</label>
+            <select id="timeline-year" class="timeline-year-select"></select>
+            <span id="timeline-year-summary" class="timeline-status"></span>
+          </div>
+
+          <div id="timeline-heatmap" data-timeline='{{ timeline|tojson }}'></div>
+          <div class="timeline-heatmap-legend">
+            <span>Less</span>
+            <span class="heatmap-legend-cell heatmap-level-0"></span>
+            <span class="heatmap-legend-cell heatmap-level-1"></span>
+            <span class="heatmap-legend-cell heatmap-level-2"></span>
+            <span class="heatmap-legend-cell heatmap-level-3"></span>
+            <span class="heatmap-legend-cell heatmap-level-4"></span>
+            <span>More</span>
+          </div>
+
+          <div class="timeline-stats" id="timeline-stats"></div>
+
+          <div class="timeline-histograms">
+            <div class="timeline-hist">
+              <p class="timeline-hist-title">Hour of day</p>
+              <div class="timeline-bars timeline-bars-24" id="timeline-hour-bars"></div>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if device_groups %}
+        <section class="panel device-groups-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Device Correlation</p>
+            <h2 class="demo-title">{{ device_groups|length }} distinct device{{ '' if device_groups|length == 1 else 's' }} detected across {{ reports|length }} images</h2>
+            <p class="dropzone-copy">
+              Images grouped by inferred camera identity. Body-serial matches are the strongest signal — same physical hardware, every time. Same make + model means the photos came from the same camera type, but not necessarily the same unit.
+            </p>
+          </div>
+          <ul class="device-groups-list">
+            {% for g in device_groups %}
+              <li class="device-group device-group-{{ g.match_strength }}">
+                <details>
+                  <summary>
+                    <div class="dg-summary-main">
+                      <span class="dg-label">{{ g.label }}</span>
+                      <div class="dg-meta">
+                        <span class="fp-class-badge fp-class-{{ g.device_class }}">{{ g.device_class|replace('_',' ')|title }}</span>
+                        <span class="dg-match dg-match-{{ g.match_strength }}">{{ g.match_label }}</span>
+                        {% if g.sublabel %}<span class="dg-sublabel">{{ g.sublabel }}</span>{% endif %}
+                      </div>
+                    </div>
+                    <div class="dg-summary-side">
+                      <span class="dg-count">{{ g.count }} image{{ '' if g.count == 1 else 's' }}</span>
+                      <span class="report-toggle" aria-hidden="true"></span>
+                    </div>
+                  </summary>
+                  <div class="dg-body">
+                    {% if g.software_versions %}
+                      <p class="dg-meta-line"><strong>Software seen:</strong> {{ g.software_versions|join(', ') }}</p>
+                    {% endif %}
+                    {% if g.lenses %}
+                      <p class="dg-meta-line"><strong>Lenses used:</strong> {{ g.lenses|join(', ') }}</p>
+                    {% endif %}
+                    <ul class="dg-images">
+                      {% for img in g.images %}
+                        <li>
+                          <a href="#report-{{ img.index }}" data-target-report="{{ img.index }}">{{ img.path }}</a>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </details>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if reports %}
+        <div class="results-toolbar">
+          <p class="report-label" style="margin:0">Reports ({{ reports|length }})</p>
+          <div class="results-toolbar-actions">
+            <label for="report-sort" class="results-toolbar-sort-label">Sort</label>
+            <select id="report-sort" class="results-toolbar-select">
+              <option value="original">Upload order</option>
+              <option value="filename">Filename (A→Z)</option>
+              <option value="risk-desc">Risk score (high → low)</option>
+              <option value="time-asc">Capture time (oldest first)</option>
+              <option value="time-desc">Capture time (newest first)</option>
+              <option value="device">Device (grouped)</option>
+              <option value="location">Location (grouped)</option>
+              <option value="hour">Hour of day</option>
+            </select>
+            <button type="button" class="results-toolbar-btn" data-toggle-all="open">Expand all</button>
+            <button type="button" class="results-toolbar-btn" data-toggle-all="close">Collapse all</button>
+          </div>
+        </div>
+        <section class="results-grid">
+          {% for report in reports %}
+            {% set lat = report.metadata.get('gps_latitude') %}
+            {% set lon = report.metadata.get('gps_longitude') %}
+            {% set has_gps = (lat is not none and lon is not none) %}
+            {% set has_time = report.metadata.get('DateTimeOriginal') or report.metadata.get('DateTime') or report.metadata.get('DateTimeDigitized') %}
+            {% set fp = report.device_fingerprint %}
+            {% set has_device = fp and fp.display_label and fp.display_label != 'Unknown device' %}
+            {% set has_serial = fp and fp.serial_numbers %}
+            {% set sk = (sort_keys[loop.index0] if sort_keys else {}) %}
+            <article class="panel report-card"
+                     id="report-{{ loop.index0 }}"
+                     data-sort-original="{{ loop.index0 }}"
+                     data-sort-filename="{{ (report.image_path or '')|lower }}"
+                     data-sort-risk="{{ report.risk_score|default(0) }}"
+                     data-sort-iso="{{ sk.iso_timestamp or '' }}"
+                     data-sort-hour="{{ sk.hour if sk.hour is not none else '' }}"
+                     data-sort-device-key="{{ sk.device_key or '' }}"
+                     data-sort-device-label="{{ (sk.device_label or '')|lower }}"
+                     data-sort-location-key="{{ sk.location_key or '' }}">
+              <details class="report-details">
+                <summary class="report-summary">
+                  <div class="report-summary-main">
+                    <p class="report-label">Image</p>
+                    <h2 class="report-title">{{ report.image_path }}</h2>
+                    <div class="report-chips">
+                      <span class="report-chip chip-findings">{{ report.findings|length }} finding{{ '' if report.findings|length == 1 else 's' }}</span>
+                      {% if has_gps %}<span class="report-chip chip-gps">GPS</span>{% endif %}
+                      {% if has_time %}<span class="report-chip chip-time">Timestamp</span>{% endif %}
+                      {% if has_device %}<span class="report-chip chip-device" title="Device class: {{ fp.device_class }}">{{ fp.display_label }}</span>{% endif %}
+                      {% if has_serial %}<span class="report-chip chip-serial">Serial</span>{% endif %}
+                    </div>
+                  </div>
+                  <div class="report-summary-side">
+                    <div class="score-pill score-{{ report.risk_level|lower }}">
+                      <span>{{ report.risk_level }}</span>
+                      <strong>{{ report.risk_score }}/100</strong>
+                    </div>
+                    <span class="report-toggle" aria-hidden="true"></span>
+                  </div>
+                </summary>
+
+                <div class="report-body">
+                  {% if has_gps %}
+                    <div class="report-section geo-section">
+                      <h3>Geolocation</h3>
+                      <p class="geo-coords">
+                        <span class="geo-coord-pair">{{ lat }}, {{ lon }}</span>
+                        <button type="button"
+                                class="geo-copy-btn"
+                                data-coords="{{ lat }}, {{ lon }}"
+                                title="Copy coordinates">Copy</button>
+                      </p>
+                      <div class="geo-map-wrapper">
+                        <iframe
+                          class="geo-map"
+                          title="Map preview for {{ report.image_path }}"
+                          loading="lazy"
+                          referrerpolicy="no-referrer-when-downgrade"
+                          src="https://www.google.com/maps?q={{ lat }},{{ lon }}&hl=en&z=15&output=embed"></iframe>
+                      </div>
+                      <div class="geo-actions">
+                        <a class="geo-btn"
+                           href="https://www.google.com/maps/search/?api=1&query={{ lat }},{{ lon }}"
+                           target="_blank"
+                           rel="noopener noreferrer">Open in Google Maps</a>
+                        <a class="geo-btn geo-btn-secondary"
+                           href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={{ lat }},{{ lon }}"
+                           target="_blank"
+                           rel="noopener noreferrer">Open Street View</a>
+                      </div>
+                    </div>
+                  {% endif %}
+
+                  {% if fp and (fp.manufacturer or fp.model or fp.os_software or fp.lens or fp.serial_numbers or fp.host_computer or fp.unique_id) %}
+                    <div class="report-section fingerprint-section">
+                      <h3>Device Fingerprint</h3>
+                      <div class="fp-header">
+                        <div class="fp-identity">
+                          <p class="fp-display-label">{{ fp.display_label }}</p>
+                          <p class="fp-class-line">
+                            <span class="fp-class-badge fp-class-{{ fp.device_class }}">{{ fp.device_class|replace('_',' ')|title }}</span>
+                            <span class="fp-confidence fp-confidence-{{ fp.confidence }}">Confidence: {{ fp.confidence }}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <dl class="fp-grid">
+                        {% if fp.manufacturer %}<div><dt>Manufacturer</dt><dd>{{ fp.manufacturer }}</dd></div>{% endif %}
+                        {% if fp.model %}<div><dt>Model</dt><dd>{{ fp.model }}</dd></div>{% endif %}
+                        {% if fp.os_software %}<div><dt>Software / firmware</dt><dd>{{ fp.os_software }}</dd></div>{% endif %}
+                        {% if fp.lens %}<div><dt>Lens</dt><dd>{{ fp.lens }}</dd></div>{% endif %}
+                        {% if fp.host_computer %}<div><dt>Host computer</dt><dd>{{ fp.host_computer }}</dd></div>{% endif %}
+                        {% if fp.unique_id %}<div><dt>Image unique ID</dt><dd>{{ fp.unique_id }}</dd></div>{% endif %}
+                        {% for key, value in fp.serial_numbers.items() %}
+                          <div><dt>{{ key }}</dt><dd class="fp-serial">{{ value }}</dd></div>
+                        {% endfor %}
+                      </dl>
+                      {% if fp.notes %}
+                        <ul class="fp-notes">
+                          {% for note in fp.notes %}<li>{{ note }}</li>{% endfor %}
+                        </ul>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  <div class="report-section">
+                    <h3>Findings</h3>
+                    <ul class="card-list">
+                      {% for finding in report.findings %}
+                        <li>
+                          <strong>{{ finding.title }}</strong>
+                          <p>{{ finding.evidence }}</p>
+                          <p class="recommendation">Recommendation: {{ finding.recommendation }}</p>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+
+                  <div class="report-section">
+                    <h3>Attack Scenarios</h3>
+                    <ul class="card-list">
+                      {% for scenario in report.attack_scenarios %}
+                        <li>
+                          <strong>{{ scenario.title }}</strong>
+                          <p>{{ scenario.description }}</p>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+
+                  <div class="report-section">
+                    <h3>Metadata Preview</h3>
+                    <dl class="metadata-grid">
+                      {% for key, value in report.metadata.items() %}
+                        <div>
+                          <dt>{{ key }}</dt>
+                          <dd>{{ value }}</dd>
+                        </div>
+                      {% endfor %}
+                    </dl>
+                  </div>
+                </div>
+              </details>
+            </article>
+          {% endfor %}
+        </section>
+      {% endif %}
+
       <section class="panel upload-panel">
         <form action="{{ url_for('demo') }}" method="post" class="demo-form">
           <div>
@@ -208,299 +500,6 @@
         </div>
       </section>
 
-      {% if location_clusters %}
-        {% set hotspot_count = location_clusters|selectattr('is_hotspot')|list|length %}
-        {% set total_geo = location_clusters|sum(attribute='count') %}
-        <section class="panel location-map-panel">
-          <div class="device-groups-header">
-            <p class="report-label">Location Map</p>
-            <h2 class="demo-title">
-              {{ total_geo }} geotagged image{{ '' if total_geo == 1 else 's' }}
-              across {{ location_clusters|length }} location{{ '' if location_clusters|length == 1 else 's' }}
-              {% if hotspot_count %} · {{ hotspot_count }} hotspot{{ '' if hotspot_count == 1 else 's' }}{% endif %}
-            </h2>
-            <p class="dropzone-copy">
-              All GPS-tagged images plotted on a single map. A cluster of 3+ photos within ~150m is flagged as a hotspot — these are the locations someone visits often (home, work, school, frequent venues).
-            </p>
-          </div>
-          <div id="location-map" data-clusters='{{ location_clusters|tojson }}'></div>
-          {% if hotspot_count %}
-            <ul class="hotspot-list">
-              {% for c in location_clusters if c.is_hotspot %}
-                <li class="hotspot-item">
-                  <div class="hotspot-info">
-                    <span class="hotspot-coords">{{ c.centroid_lat }}, {{ c.centroid_lon }}</span>
-                    <span class="hotspot-count">{{ c.count }} images · ~{{ c.radius_m|round|int }}m spread</span>
-                  </div>
-                  <a class="hotspot-link"
-                     href="https://www.google.com/maps/search/?api=1&query={{ c.centroid_lat }},{{ c.centroid_lon }}"
-                     target="_blank"
-                     rel="noopener noreferrer">Open in Google Maps</a>
-                </li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-        </section>
-      {% endif %}
-
-      {% if timeline %}
-        {% set total_events = timeline.events|length %}
-        {% set max_hour = timeline.hour_histogram|max %}
-        {% set max_weekday = timeline.weekday_histogram|max %}
-        <section class="panel timeline-panel">
-          <div class="device-groups-header">
-            <p class="report-label">Timeline</p>
-            <h2 class="demo-title">{{ total_events }} timestamped image{{ '' if total_events == 1 else 's' }} over {{ timeline.span_human }}</h2>
-            <p class="dropzone-copy">
-              Photos sorted by capture time. Repeating peaks in the hour-of-day or day-of-week distributions reveal routine. Long gaps suggest device-off periods, travel, or selective deletion.
-            </p>
-          </div>
-
-          <div class="timeline-stats">
-            <div class="timeline-stat">
-              <span class="timeline-stat-label">Span</span>
-              <span class="timeline-stat-value">{{ timeline.span_human }}</span>
-            </div>
-            {% if timeline.peak_hour is not none %}
-              <div class="timeline-stat">
-                <span class="timeline-stat-label">Peak hour</span>
-                <span class="timeline-stat-value">{{ '%02d'|format(timeline.peak_hour) }}:00 · {{ timeline.peak_hour_count }}x</span>
-              </div>
-            {% endif %}
-            {% if timeline.peak_weekday is not none %}
-              <div class="timeline-stat">
-                <span class="timeline-stat-label">Peak day</span>
-                <span class="timeline-stat-value">{{ timeline.peak_weekday_name }} · {{ timeline.peak_weekday_count }}x</span>
-              </div>
-            {% endif %}
-            {% if timeline.longest_gap %}
-              <div class="timeline-stat timeline-stat-gap">
-                <span class="timeline-stat-label">Longest gap</span>
-                <span class="timeline-stat-value">{{ timeline.longest_gap.human }}</span>
-              </div>
-            {% endif %}
-            {% if timeline.missing_count %}
-              <div class="timeline-stat">
-                <span class="timeline-stat-label">No timestamp</span>
-                <span class="timeline-stat-value">{{ timeline.missing_count }}</span>
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="timeline-zoom-controls">
-            <button type="button" id="timeline-reset" class="results-toolbar-btn" hidden>Reset zoom</button>
-            <span id="timeline-status" class="timeline-status">Drag across the strip below to zoom into a time range.</span>
-          </div>
-          <div id="timeline-strip" data-timeline='{{ timeline|tojson }}'></div>
-          <div id="timeline-legend" class="timeline-legend"></div>
-
-          <div class="timeline-histograms">
-            <div class="timeline-hist">
-              <p class="timeline-hist-title">Hour of day</p>
-              <div class="timeline-bars timeline-bars-24" id="timeline-hour-bars"></div>
-            </div>
-            <div class="timeline-hist">
-              <p class="timeline-hist-title">Day of week</p>
-              <div class="timeline-bars timeline-bars-7" id="timeline-weekday-bars"></div>
-            </div>
-          </div>
-        </section>
-      {% endif %}
-
-      {% if device_groups %}
-        <section class="panel device-groups-panel">
-          <div class="device-groups-header">
-            <p class="report-label">Device Correlation</p>
-            <h2 class="demo-title">{{ device_groups|length }} distinct device{{ '' if device_groups|length == 1 else 's' }} detected across {{ reports|length }} images</h2>
-            <p class="dropzone-copy">
-              Images grouped by inferred camera identity. Body-serial matches are the strongest signal — same physical hardware, every time. Same make + model means the photos came from the same camera type, but not necessarily the same unit.
-            </p>
-          </div>
-          <ul class="device-groups-list">
-            {% for g in device_groups %}
-              <li class="device-group device-group-{{ g.match_strength }}">
-                <details>
-                  <summary>
-                    <div class="dg-summary-main">
-                      <span class="dg-label">{{ g.label }}</span>
-                      <div class="dg-meta">
-                        <span class="fp-class-badge fp-class-{{ g.device_class }}">{{ g.device_class|replace('_',' ')|title }}</span>
-                        <span class="dg-match dg-match-{{ g.match_strength }}">{{ g.match_label }}</span>
-                        {% if g.sublabel %}<span class="dg-sublabel">{{ g.sublabel }}</span>{% endif %}
-                      </div>
-                    </div>
-                    <div class="dg-summary-side">
-                      <span class="dg-count">{{ g.count }} image{{ '' if g.count == 1 else 's' }}</span>
-                      <span class="report-toggle" aria-hidden="true"></span>
-                    </div>
-                  </summary>
-                  <div class="dg-body">
-                    {% if g.software_versions %}
-                      <p class="dg-meta-line"><strong>Software seen:</strong> {{ g.software_versions|join(', ') }}</p>
-                    {% endif %}
-                    {% if g.lenses %}
-                      <p class="dg-meta-line"><strong>Lenses used:</strong> {{ g.lenses|join(', ') }}</p>
-                    {% endif %}
-                    <ul class="dg-images">
-                      {% for img in g.images %}
-                        <li>
-                          <a href="#report-{{ img.index }}" data-target-report="{{ img.index }}">{{ img.path }}</a>
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  </div>
-                </details>
-              </li>
-            {% endfor %}
-          </ul>
-        </section>
-      {% endif %}
-
-      {% if reports %}
-        <div class="results-toolbar">
-          <p class="report-label" style="margin:0">Reports ({{ reports|length }})</p>
-          <div class="results-toolbar-actions">
-            <button type="button" class="results-toolbar-btn" data-toggle-all="open">Expand all</button>
-            <button type="button" class="results-toolbar-btn" data-toggle-all="close">Collapse all</button>
-          </div>
-        </div>
-        <section class="results-grid">
-          {% for report in reports %}
-            {% set lat = report.metadata.get('gps_latitude') %}
-            {% set lon = report.metadata.get('gps_longitude') %}
-            {% set has_gps = (lat is not none and lon is not none) %}
-            {% set has_time = report.metadata.get('DateTimeOriginal') or report.metadata.get('DateTime') or report.metadata.get('DateTimeDigitized') %}
-            {% set fp = report.device_fingerprint %}
-            {% set has_device = fp and fp.display_label and fp.display_label != 'Unknown device' %}
-            {% set has_serial = fp and fp.serial_numbers %}
-            <article class="panel report-card" id="report-{{ loop.index0 }}">
-              <details class="report-details">
-                <summary class="report-summary">
-                  <div class="report-summary-main">
-                    <p class="report-label">Image</p>
-                    <h2 class="report-title">{{ report.image_path }}</h2>
-                    <div class="report-chips">
-                      <span class="report-chip chip-findings">{{ report.findings|length }} finding{{ '' if report.findings|length == 1 else 's' }}</span>
-                      {% if has_gps %}<span class="report-chip chip-gps">GPS</span>{% endif %}
-                      {% if has_time %}<span class="report-chip chip-time">Timestamp</span>{% endif %}
-                      {% if has_device %}<span class="report-chip chip-device" title="Device class: {{ fp.device_class }}">{{ fp.display_label }}</span>{% endif %}
-                      {% if has_serial %}<span class="report-chip chip-serial">Serial</span>{% endif %}
-                    </div>
-                  </div>
-                  <div class="report-summary-side">
-                    <div class="score-pill score-{{ report.risk_level|lower }}">
-                      <span>{{ report.risk_level }}</span>
-                      <strong>{{ report.risk_score }}/100</strong>
-                    </div>
-                    <span class="report-toggle" aria-hidden="true"></span>
-                  </div>
-                </summary>
-
-                <div class="report-body">
-                  {% if has_gps %}
-                    <div class="report-section geo-section">
-                      <h3>Geolocation</h3>
-                      <p class="geo-coords">
-                        <span class="geo-coord-pair">{{ lat }}, {{ lon }}</span>
-                        <button type="button"
-                                class="geo-copy-btn"
-                                data-coords="{{ lat }}, {{ lon }}"
-                                title="Copy coordinates">Copy</button>
-                      </p>
-                      <div class="geo-map-wrapper">
-                        <iframe
-                          class="geo-map"
-                          title="Map preview for {{ report.image_path }}"
-                          loading="lazy"
-                          referrerpolicy="no-referrer-when-downgrade"
-                          src="https://www.google.com/maps?q={{ lat }},{{ lon }}&hl=en&z=15&output=embed"></iframe>
-                      </div>
-                      <div class="geo-actions">
-                        <a class="geo-btn"
-                           href="https://www.google.com/maps/search/?api=1&query={{ lat }},{{ lon }}"
-                           target="_blank"
-                           rel="noopener noreferrer">Open in Google Maps</a>
-                        <a class="geo-btn geo-btn-secondary"
-                           href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={{ lat }},{{ lon }}"
-                           target="_blank"
-                           rel="noopener noreferrer">Open Street View</a>
-                      </div>
-                    </div>
-                  {% endif %}
-
-                  {% if fp and (fp.manufacturer or fp.model or fp.os_software or fp.lens or fp.serial_numbers or fp.host_computer or fp.unique_id) %}
-                    <div class="report-section fingerprint-section">
-                      <h3>Device Fingerprint</h3>
-                      <div class="fp-header">
-                        <div class="fp-identity">
-                          <p class="fp-display-label">{{ fp.display_label }}</p>
-                          <p class="fp-class-line">
-                            <span class="fp-class-badge fp-class-{{ fp.device_class }}">{{ fp.device_class|replace('_',' ')|title }}</span>
-                            <span class="fp-confidence fp-confidence-{{ fp.confidence }}">Confidence: {{ fp.confidence }}</span>
-                          </p>
-                        </div>
-                      </div>
-                      <dl class="fp-grid">
-                        {% if fp.manufacturer %}<div><dt>Manufacturer</dt><dd>{{ fp.manufacturer }}</dd></div>{% endif %}
-                        {% if fp.model %}<div><dt>Model</dt><dd>{{ fp.model }}</dd></div>{% endif %}
-                        {% if fp.os_software %}<div><dt>Software / firmware</dt><dd>{{ fp.os_software }}</dd></div>{% endif %}
-                        {% if fp.lens %}<div><dt>Lens</dt><dd>{{ fp.lens }}</dd></div>{% endif %}
-                        {% if fp.host_computer %}<div><dt>Host computer</dt><dd>{{ fp.host_computer }}</dd></div>{% endif %}
-                        {% if fp.unique_id %}<div><dt>Image unique ID</dt><dd>{{ fp.unique_id }}</dd></div>{% endif %}
-                        {% for key, value in fp.serial_numbers.items() %}
-                          <div><dt>{{ key }}</dt><dd class="fp-serial">{{ value }}</dd></div>
-                        {% endfor %}
-                      </dl>
-                      {% if fp.notes %}
-                        <ul class="fp-notes">
-                          {% for note in fp.notes %}<li>{{ note }}</li>{% endfor %}
-                        </ul>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-
-                  <div class="report-section">
-                    <h3>Findings</h3>
-                    <ul class="card-list">
-                      {% for finding in report.findings %}
-                        <li>
-                          <strong>{{ finding.title }}</strong>
-                          <p>{{ finding.evidence }}</p>
-                          <p class="recommendation">Recommendation: {{ finding.recommendation }}</p>
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  </div>
-
-                  <div class="report-section">
-                    <h3>Attack Scenarios</h3>
-                    <ul class="card-list">
-                      {% for scenario in report.attack_scenarios %}
-                        <li>
-                          <strong>{{ scenario.title }}</strong>
-                          <p>{{ scenario.description }}</p>
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  </div>
-
-                  <div class="report-section">
-                    <h3>Metadata Preview</h3>
-                    <dl class="metadata-grid">
-                      {% for key, value in report.metadata.items() %}
-                        <div>
-                          <dt>{{ key }}</dt>
-                          <dd>{{ value }}</dd>
-                        </div>
-                      {% endfor %}
-                    </dl>
-                  </div>
-                </div>
-              </details>
-            </article>
-          {% endfor %}
-        </section>
-      {% endif %}
     </main>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -768,282 +767,264 @@
         });
       });
 
-      // ── Timeline: chronological dot plot + histograms with brush-to-zoom ─
+      // ── Timeline: GitHub-style calendar heatmap with year selector ──────
       const TimelineModule = (function () {
         const SVG_NS = "http://www.w3.org/2000/svg";
-        const PALETTE = ["#b14d24", "#2c5282", "#2f6e49", "#876e1c", "#6b46c1", "#8c1c13", "#4a5568"];
-        const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const localDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 
-        let state = { data: null, deviceColors: {}, range: null, brush: null };
+        let state = { data: null, year: null, eventsByDate: {} };
 
         function init() {
-          const stripEl = document.getElementById("timeline-strip");
-          if (!stripEl) return;
+          const heatEl = document.getElementById("timeline-heatmap");
+          if (!heatEl) return;
           let data;
-          try { data = JSON.parse(stripEl.dataset.timeline || "null"); }
+          try { data = JSON.parse(heatEl.dataset.timeline || "null"); }
           catch (err) {
             console.error("timeline: failed to parse data-timeline", err);
-            stripEl.innerHTML = '<p style="padding:1rem;color:var(--critical)">Could not parse timeline data — see console.</p>';
+            heatEl.innerHTML = '<p style="padding:1rem;color:var(--critical)">Could not parse timeline data — see console.</p>';
             return;
           }
           if (!data || !data.events || data.events.length < 2) return;
-
           state.data = data;
-          state.deviceColors = {};
-          let pi = 0;
+
+          // Index events by local date string (so heatmap cells respect the user's TZ)
+          state.eventsByDate = {};
           data.events.forEach((e) => {
-            const key = e.device_label || "(unknown)";
-            if (!(key in state.deviceColors)) state.deviceColors[key] = PALETTE[pi++ % PALETTE.length];
+            const d = new Date(e.iso);
+            const key = localDateStr(d);
+            (state.eventsByDate[key] = state.eventsByDate[key] || []).push(e);
           });
+
+          // Populate year selector
+          const sel = document.getElementById("timeline-year");
+          if (sel) {
+            sel.innerHTML = data.available_years.map((y) =>
+              `<option value="${y}">${y}</option>`
+            ).join("");
+            state.year = data.default_year;
+            sel.value = String(state.year);
+            sel.addEventListener("change", () => {
+              state.year = parseInt(sel.value, 10);
+              render();
+            });
+          }
 
           render();
-          renderLegend();
-
-          const resetBtn = document.getElementById("timeline-reset");
-          if (resetBtn) resetBtn.addEventListener("click", resetZoom);
+          window.addEventListener("resize", debounce(render, 150));
         }
 
-        function visibleEvents() {
-          const evs = state.data.events;
-          if (!state.range) return evs;
-          const [a, b] = state.range;
-          return evs.filter((e) => {
-            const t = new Date(e.iso).getTime();
-            return t >= a && t <= b;
-          });
+        function eventsInYear(year) {
+          return state.data.events.filter((e) => new Date(e.iso).getFullYear() === year);
         }
 
-        function rangeBounds() {
-          if (state.range) return state.range;
-          return [
-            new Date(state.data.earliest).getTime(),
-            new Date(state.data.latest).getTime(),
-          ];
+        function colorLevel(count) {
+          if (count <= 0) return 0;
+          if (count === 1) return 1;
+          if (count <= 3) return 2;
+          if (count <= 6) return 3;
+          return 4;
         }
 
         function render() {
-          renderStrip();
-          renderHistograms(visibleEvents());
-          renderStatus();
+          const year = state.year;
+          const events = eventsInYear(year);
+          renderHeatmap(year, events);
+          renderStats(year, events);
+          renderHourBars(events);
+          renderYearSummary(year, events);
         }
 
-        function renderStrip() {
-          const stripEl = document.getElementById("timeline-strip");
-          const data = state.data;
-          const [fromMs, toMs] = rangeBounds();
-          const span = Math.max(toMs - fromMs, 1);
+        function renderHeatmap(year, events) {
+          const heatEl = document.getElementById("timeline-heatmap");
+          const containerW = heatEl.clientWidth || 720;
 
-          const W = stripEl.clientWidth || 700;
-          const H = 110;
-          const ML = 22, MR = 22, AXIS_Y = 56;
-          const innerW = W - ML - MR;
+          // Grid covers the calendar year, padded out to align on Sunday-start weeks
+          const yearStart = new Date(year, 0, 1);
+          const yearEnd = new Date(year, 11, 31);
+          const gridStart = new Date(yearStart);
+          gridStart.setDate(gridStart.getDate() - gridStart.getDay()); // back up to Sunday
+
+          // Precount cells/weeks
+          const totalDays = Math.floor((yearEnd - gridStart) / 86400000) + 1;
+          const totalWeeks = Math.ceil(totalDays / 7);
+
+          // Cell sizing scales to fit the container width
+          const ML = 32, MR = 8, MT = 18, MB = 6;
+          const availW = Math.max(containerW - ML - MR, 200);
+          const cellPitch = Math.max(10, Math.min(16, Math.floor(availW / totalWeeks)));
+          const cellSize = Math.max(7, cellPitch - 2);
+          const W = ML + MR + cellPitch * totalWeeks;
+          const rowPitch = cellPitch;
+          const H = MT + MB + rowPitch * 7;
 
           const svg = document.createElementNS(SVG_NS, "svg");
           svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
           svg.setAttribute("width", "100%");
           svg.setAttribute("height", H);
-          svg.setAttribute("class", "timeline-strip-svg");
+          svg.setAttribute("class", "timeline-heatmap-svg");
 
-          // Longest-gap highlight (only if visible in current range)
-          if (data.longest_gap && data.longest_gap.days >= 1) {
-            const gFrom = new Date(data.longest_gap.start).getTime();
-            const gTo = new Date(data.longest_gap.end).getTime();
-            const visFrom = Math.max(gFrom, fromMs);
-            const visTo = Math.min(gTo, toMs);
-            if (visTo > visFrom) {
-              const gx1 = ML + (visFrom - fromMs) / span * innerW;
-              const gx2 = ML + (visTo - fromMs) / span * innerW;
-              const rect = document.createElementNS(SVG_NS, "rect");
-              rect.setAttribute("x", gx1);
-              rect.setAttribute("y", AXIS_Y - 18);
-              rect.setAttribute("width", Math.max(gx2 - gx1, 2));
-              rect.setAttribute("height", 36);
-              rect.setAttribute("fill", "rgba(140,28,19,0.07)");
-              rect.setAttribute("stroke", "rgba(140,28,19,0.3)");
-              rect.setAttribute("stroke-dasharray", "3 3");
-              rect.setAttribute("pointer-events", "none");
-              const tt = document.createElementNS(SVG_NS, "title");
-              tt.textContent = `Longest gap: ${data.longest_gap.human}`;
-              rect.appendChild(tt);
-              svg.appendChild(rect);
+          // Day-of-week labels (Mon, Wed, Fri only — keeps it readable)
+          [["Mon", 1], ["Wed", 3], ["Fri", 5]].forEach(([txt, dow]) => {
+            const t = document.createElementNS(SVG_NS, "text");
+            t.textContent = txt;
+            t.setAttribute("x", ML - 6);
+            t.setAttribute("y", MT + dow * rowPitch + cellSize * 0.75);
+            t.setAttribute("text-anchor", "end");
+            t.setAttribute("font-size", "10");
+            t.setAttribute("fill", "#64574d");
+            t.setAttribute("font-family", "Georgia, serif");
+            svg.appendChild(t);
+          });
+
+          let lastMonthLabeled = -1;
+          const dayMs = 86400000;
+          let cursor = new Date(gridStart);
+          for (let week = 0; week < totalWeeks; week++) {
+            for (let dow = 0; dow < 7; dow++) {
+              const inYear = cursor.getFullYear() === year;
+              if (inYear) {
+                const dateStr = localDateStr(cursor);
+                const evs = state.eventsByDate[dateStr] || [];
+                const count = evs.length;
+                const cell = document.createElementNS(SVG_NS, "rect");
+                cell.setAttribute("x", ML + week * cellPitch);
+                cell.setAttribute("y", MT + dow * rowPitch);
+                cell.setAttribute("width", cellSize);
+                cell.setAttribute("height", cellSize);
+                cell.setAttribute("rx", 2);
+                cell.setAttribute("class", `heatmap-cell heatmap-level-${colorLevel(count)}`);
+                if (count > 0) {
+                  cell.setAttribute("data-target-report", evs[0].index);
+                  cell.setAttribute("style", "cursor:pointer");
+                }
+                const noun = count === 1 ? "photo" : "photos";
+                const tt = document.createElementNS(SVG_NS, "title");
+                tt.textContent = `${dateStr} — ${count} ${noun}`;
+                cell.appendChild(tt);
+                svg.appendChild(cell);
+
+                // Month label: stamp on the column where the 1st of a month appears
+                if (cursor.getDate() === 1 && cursor.getMonth() !== lastMonthLabeled) {
+                  const ml = document.createElementNS(SVG_NS, "text");
+                  ml.textContent = MONTH_NAMES[cursor.getMonth()];
+                  ml.setAttribute("x", ML + week * cellPitch);
+                  ml.setAttribute("y", MT - 6);
+                  ml.setAttribute("font-size", "10");
+                  ml.setAttribute("fill", "#64574d");
+                  ml.setAttribute("font-family", "Georgia, serif");
+                  svg.appendChild(ml);
+                  lastMonthLabeled = cursor.getMonth();
+                }
+              }
+              cursor = new Date(cursor.getTime() + dayMs);
             }
           }
 
-          // Axis line
-          const axis = document.createElementNS(SVG_NS, "line");
-          axis.setAttribute("x1", ML);
-          axis.setAttribute("x2", W - MR);
-          axis.setAttribute("y1", AXIS_Y);
-          axis.setAttribute("y2", AXIS_Y);
-          axis.setAttribute("stroke", "rgba(84,60,37,0.3)");
-          axis.setAttribute("stroke-width", "1");
-          axis.setAttribute("pointer-events", "none");
-          svg.appendChild(axis);
-
-          // Date labels reflect the current view range
-          const fmtDate = (ms) => new Date(ms).toISOString().split("T")[0];
-          const startLabel = document.createElementNS(SVG_NS, "text");
-          startLabel.textContent = fmtDate(fromMs);
-          startLabel.setAttribute("x", ML);
-          startLabel.setAttribute("y", H - 12);
-          startLabel.setAttribute("font-size", "11");
-          startLabel.setAttribute("fill", "#64574d");
-          startLabel.setAttribute("font-family", "Georgia, serif");
-          svg.appendChild(startLabel);
-          const endLabel = document.createElementNS(SVG_NS, "text");
-          endLabel.textContent = fmtDate(toMs);
-          endLabel.setAttribute("x", W - MR);
-          endLabel.setAttribute("y", H - 12);
-          endLabel.setAttribute("text-anchor", "end");
-          endLabel.setAttribute("font-size", "11");
-          endLabel.setAttribute("fill", "#64574d");
-          endLabel.setAttribute("font-family", "Georgia, serif");
-          svg.appendChild(endLabel);
-
-          // Markers (only those in current range)
-          state.data.events.forEach((e) => {
-            const t = new Date(e.iso).getTime();
-            if (t < fromMs || t > toMs) return;
-            const x = ML + (t - fromMs) / span * innerW;
-            const dot = document.createElementNS(SVG_NS, "circle");
-            dot.setAttribute("cx", x);
-            dot.setAttribute("cy", AXIS_Y);
-            dot.setAttribute("r", 5);
-            dot.setAttribute("fill", state.deviceColors[e.device_label || "(unknown)"]);
-            dot.setAttribute("fill-opacity", "0.78");
-            dot.setAttribute("stroke", "#fff");
-            dot.setAttribute("stroke-width", "1.5");
-            dot.setAttribute("style", "cursor:pointer");
-            dot.setAttribute("data-target-report", e.index);
-            const tt = document.createElementNS(SVG_NS, "title");
-            tt.textContent = `${e.path}\n${e.display}` + (e.device_label ? `\n${e.device_label}` : "");
-            dot.appendChild(tt);
-            svg.appendChild(dot);
-          });
-
-          // Brush rect placeholder (created on demand during drag)
-          attachBrush(svg, stripEl, ML, MR, AXIS_Y, innerW, fromMs, span, W, H);
-
-          stripEl.innerHTML = "";
-          stripEl.appendChild(svg);
+          heatEl.innerHTML = "";
+          heatEl.appendChild(svg);
         }
 
-        function attachBrush(svg, stripEl, ML, MR, AXIS_Y, innerW, fromMs, span, W, H) {
-          let brushStartX = null;
-          let brushRect = null;
-
-          const xToMs = (x) => fromMs + Math.max(0, Math.min(innerW, x - ML)) / innerW * span;
-          const clientToSvgX = (clientX) => {
-            const rect = svg.getBoundingClientRect();
-            const ratio = W / rect.width;
-            return (clientX - rect.left) * ratio;
-          };
-
-          const onDown = (ev) => {
-            // Don't brush when the user is clicking a dot
-            if (ev.target.tagName && ev.target.tagName.toLowerCase() === "circle") return;
-            ev.preventDefault();
-            brushStartX = clientToSvgX(ev.clientX);
-            brushRect = document.createElementNS(SVG_NS, "rect");
-            brushRect.setAttribute("x", brushStartX);
-            brushRect.setAttribute("y", AXIS_Y - 22);
-            brushRect.setAttribute("width", 0);
-            brushRect.setAttribute("height", 44);
-            brushRect.setAttribute("fill", "rgba(177,77,36,0.18)");
-            brushRect.setAttribute("stroke", "rgba(127,52,22,0.55)");
-            brushRect.setAttribute("stroke-dasharray", "4 3");
-            brushRect.setAttribute("pointer-events", "none");
-            svg.appendChild(brushRect);
-            window.addEventListener("mousemove", onMove);
-            window.addEventListener("mouseup", onUp, { once: true });
-          };
-
-          const onMove = (ev) => {
-            if (brushStartX === null || !brushRect) return;
-            const x = clientToSvgX(ev.clientX);
-            const lo = Math.min(brushStartX, x);
-            const hi = Math.max(brushStartX, x);
-            brushRect.setAttribute("x", Math.max(ML, lo));
-            brushRect.setAttribute("width", Math.min(W - MR, hi) - Math.max(ML, lo));
-          };
-
-          const onUp = (ev) => {
-            window.removeEventListener("mousemove", onMove);
-            const x = clientToSvgX(ev.clientX);
-            const lo = Math.min(brushStartX, x);
-            const hi = Math.max(brushStartX, x);
-            brushStartX = null;
-            // Require some minimum width to avoid accidental zooms on a click
-            if (hi - lo < 6) return;
-            const fromMsNew = xToMs(lo);
-            const toMsNew = xToMs(hi);
-            if (toMsNew - fromMsNew < 1000) return;
-            state.range = [fromMsNew, toMsNew];
-            render();
-          };
-
-          svg.addEventListener("mousedown", onDown);
-        }
-
-        function renderHistograms(events) {
-          const hourBins = new Array(24).fill(0);
-          const dayBins = new Array(7).fill(0);
-          events.forEach((e) => {
-            hourBins[e.hour]++;
-            dayBins[e.weekday]++;
-          });
-          const peakHour = events.length ? hourBins.indexOf(Math.max.apply(null, hourBins)) : -1;
-          const peakDay  = events.length ? dayBins.indexOf(Math.max.apply(null, dayBins))  : -1;
-          renderBars(document.getElementById("timeline-hour-bars"), hourBins, peakHour, (i) => String(i).padStart(2, "0") + ":00", (i) => i % 6 === 0 ? String(i).padStart(2, "0") : "");
-          renderBars(document.getElementById("timeline-weekday-bars"), dayBins, peakDay, (i) => WEEKDAY_NAMES[i], (i) => WEEKDAY_NAMES[i]);
-        }
-
-        function renderBars(container, bins, peakIdx, tooltipFn, labelFn) {
+        function renderHourBars(events) {
+          const container = document.getElementById("timeline-hour-bars");
           if (!container) return;
+          const bins = new Array(24).fill(0);
+          events.forEach((e) => { bins[e.hour]++; });
+          const peakIdx = events.length ? bins.indexOf(Math.max.apply(null, bins)) : -1;
           const max = Math.max.apply(null, bins) || 0;
           const html = bins.map((count, i) => {
             const pct = max ? (count / max * 100) : 0;
             const peakClass = (i === peakIdx && count > 0) ? " timeline-bar-peak" : "";
             const noun = count === 1 ? "image" : "images";
-            const label = labelFn(i);
+            const label = i % 6 === 0 ? pad2(i) : "";
             const labelHtml = label ? escHtml(label) : "&nbsp;";
             return `<div class="timeline-bar-col">`
-              + `<div class="timeline-bar${peakClass}" style="height:${pct}%" title="${escHtml(tooltipFn(i))} — ${count} ${noun}"></div>`
+              + `<div class="timeline-bar${peakClass}" style="height:${pct}%" title="${pad2(i)}:00 — ${count} ${noun}"></div>`
               + `<span class="timeline-bar-label">${labelHtml}</span>`
               + `</div>`;
           }).join("");
           container.innerHTML = html;
         }
 
-        function renderLegend() {
-          const legendEl = document.getElementById("timeline-legend");
-          if (!legendEl) return;
-          legendEl.innerHTML = Object.entries(state.deviceColors).map(([label, color]) =>
-            `<span class="timeline-legend-item"><span class="timeline-legend-dot" style="background:${color}"></span>${escHtml(label)}</span>`
-          ).join("");
-        }
+        function renderStats(year, events) {
+          const statsEl = document.getElementById("timeline-stats");
+          if (!statsEl) return;
+          if (!events.length) { statsEl.innerHTML = ""; return; }
 
-        function renderStatus() {
-          const statusEl = document.getElementById("timeline-status");
-          const resetBtn = document.getElementById("timeline-reset");
-          if (!statusEl || !resetBtn) return;
-          const total = state.data.events.length;
-          const visible = visibleEvents().length;
-          if (state.range) {
-            resetBtn.hidden = false;
-            const [a, b] = state.range;
-            const fmt = (ms) => new Date(ms).toISOString().split("T")[0];
-            statusEl.textContent = `Zoomed: ${fmt(a)} → ${fmt(b)} · showing ${visible} of ${total} events`;
-          } else {
-            resetBtn.hidden = true;
-            statusEl.textContent = "Drag across the strip below to zoom into a time range.";
+          // Hour stats
+          const hourBins = new Array(24).fill(0);
+          const dayBins = new Array(7).fill(0);
+          events.forEach((e) => { hourBins[e.hour]++; dayBins[e.weekday]++; });
+          const peakHour = hourBins.indexOf(Math.max.apply(null, hourBins));
+          const pyWeekday = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]; // server uses Mon=0
+          const peakDay = dayBins.indexOf(Math.max.apply(null, dayBins));
+
+          // Active days + longest streak + longest gap (within year, restricted to dates with events)
+          const sorted = events.slice().sort((a,b) => a.iso < b.iso ? -1 : 1);
+          let longestGapMs = 0;
+          let gapStart = null, gapEnd = null;
+          for (let i = 1; i < sorted.length; i++) {
+            const dt = new Date(sorted[i].iso) - new Date(sorted[i-1].iso);
+            if (dt > longestGapMs) {
+              longestGapMs = dt;
+              gapStart = sorted[i-1].iso.split("T")[0];
+              gapEnd = sorted[i].iso.split("T")[0];
+            }
           }
+          const activeDays = new Set(events.map((e) => localDateStr(new Date(e.iso)))).size;
+
+          const tiles = [
+            tile("Photos in " + year, String(events.length)),
+            tile("Active days", String(activeDays)),
+            tile("Peak hour", `${pad2(peakHour)}:00 · ${hourBins[peakHour]}x`),
+            tile("Peak weekday", `${pyWeekday[peakDay]} · ${dayBins[peakDay]}x`),
+          ];
+          if (longestGapMs > 86400000) {
+            tiles.push(tile("Longest gap", humanDuration(longestGapMs / 1000), true, `${gapStart} → ${gapEnd}`));
+          }
+          statsEl.innerHTML = tiles.join("");
         }
 
-        function resetZoom() {
-          state.range = null;
-          render();
+        function tile(label, value, isGap, sub) {
+          const cls = isGap ? " timeline-stat-gap" : "";
+          const subHtml = sub ? `<span class="timeline-stat-sub">${escHtml(sub)}</span>` : "";
+          return `<div class="timeline-stat${cls}">`
+            + `<span class="timeline-stat-label">${escHtml(label)}</span>`
+            + `<span class="timeline-stat-value">${escHtml(value)}</span>`
+            + subHtml
+            + `</div>`;
+        }
+
+        function renderYearSummary(year, events) {
+          const el = document.getElementById("timeline-year-summary");
+          if (!el) return;
+          if (!events.length) {
+            el.textContent = `No timestamped photos in ${year}.`;
+            return;
+          }
+          const noun = events.length === 1 ? "photo" : "photos";
+          el.textContent = `${events.length} ${noun} in ${year} · click a day to open its report.`;
+        }
+
+        function humanDuration(s) {
+          if (s < 60) return `${Math.floor(s)}s`;
+          if (s < 3600) return `${Math.floor(s/60)} min`;
+          if (s < 86400) {
+            const h = s/3600;
+            return h < 10 ? `${h.toFixed(1)} hr` : `${Math.floor(h)} hr`;
+          }
+          const d = s/86400;
+          if (d < 30) return d < 10 ? `${d.toFixed(1)} days` : `${Math.floor(d)} days`;
+          if (d < 365) return `${(d/30).toFixed(1)} months`;
+          return `${(d/365).toFixed(1)} years`;
+        }
+
+        function debounce(fn, ms) {
+          let t;
+          return function () { clearTimeout(t); t = setTimeout(fn, ms); };
         }
 
         return { init: init };
@@ -1129,6 +1110,74 @@
         if (details && !details.open) details.open = true;
         card.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+
+      // ── Results toolbar: client-side sort ───────────────────────────────
+      (function () {
+        const sel = document.getElementById("report-sort");
+        if (!sel) return;
+        const grid = document.querySelector(".results-grid");
+        if (!grid) return;
+
+        const num = (s, fallback) => {
+          const v = parseFloat(s);
+          return Number.isFinite(v) ? v : fallback;
+        };
+        const cmpStr = (a, b) => String(a || "").localeCompare(String(b || ""));
+        // For ISO timestamps and other strings where empty should sort to the
+        // end, replace blanks with a high-magnitude sentinel.
+        const isoOrEnd = (s) => s || "9999-99-99";
+        const labelOrEnd = (s) => s || "￿";
+
+        function reorder() {
+          const cards = Array.from(grid.querySelectorAll(".report-card"));
+          const mode = sel.value;
+
+          cards.sort((a, b) => {
+            const ad = a.dataset, bd = b.dataset;
+            switch (mode) {
+              case "filename":
+                return cmpStr(ad.sortFilename, bd.sortFilename);
+              case "risk-desc":
+                return num(bd.sortRisk, 0) - num(ad.sortRisk, 0);
+              case "time-asc":
+                return cmpStr(isoOrEnd(ad.sortIso), isoOrEnd(bd.sortIso));
+              case "time-desc": {
+                // Empty timestamps still go to the end — flip by reversing
+                // only the populated half.
+                const ai = ad.sortIso, bi = bd.sortIso;
+                if (!ai && !bi) return 0;
+                if (!ai) return 1;
+                if (!bi) return -1;
+                return cmpStr(bi, ai);
+              }
+              case "device": {
+                const dl = cmpStr(labelOrEnd(ad.sortDeviceLabel), labelOrEnd(bd.sortDeviceLabel));
+                if (dl !== 0) return dl;
+                return cmpStr(isoOrEnd(ad.sortIso), isoOrEnd(bd.sortIso));
+              }
+              case "location": {
+                const lk = cmpStr(labelOrEnd(ad.sortLocationKey), labelOrEnd(bd.sortLocationKey));
+                if (lk !== 0) return lk;
+                return cmpStr(isoOrEnd(ad.sortIso), isoOrEnd(bd.sortIso));
+              }
+              case "hour": {
+                const ah = ad.sortHour === "" ? 99 : num(ad.sortHour, 99);
+                const bh = bd.sortHour === "" ? 99 : num(bd.sortHour, 99);
+                if (ah !== bh) return ah - bh;
+                return cmpStr(isoOrEnd(ad.sortIso), isoOrEnd(bd.sortIso));
+              }
+              default:
+                return num(ad.sortOriginal, 0) - num(bd.sortOriginal, 0);
+            }
+          });
+
+          const frag = document.createDocumentFragment();
+          cards.forEach((c) => frag.appendChild(c));
+          grid.appendChild(frag);
+        }
+
+        sel.addEventListener("change", reorder);
+      })();
 
       // ── Results toolbar: expand/collapse all ────────────────────────────
       document.querySelectorAll('[data-toggle-all]').forEach((btn) => {

@@ -300,6 +300,9 @@ def build_timeline(reports: list[dict[str, Any]]) -> dict[str, Any] | None:
     peak_hour = max(range(24), key=lambda h: hour_hist[h]) if any(hour_hist) else None
     peak_weekday = max(range(7), key=lambda d: weekday_hist[d]) if any(weekday_hist) else None
 
+    available_years = sorted({datetime.fromisoformat(e["iso"]).year for e in events})
+    default_year = available_years[-1] if available_years else None
+
     return {
         "events": events,
         "earliest": events[0]["iso"],
@@ -316,6 +319,8 @@ def build_timeline(reports: list[dict[str, Any]]) -> dict[str, Any] | None:
         "peak_weekday_count": weekday_hist[peak_weekday] if peak_weekday is not None else 0,
         "longest_gap": longest_gap,
         "missing_count": len(reports) - len(events),
+        "available_years": available_years,
+        "default_year": default_year,
     }
 
 
@@ -331,6 +336,45 @@ def _parse_exif_dt(value: Any) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def build_sort_keys(
+    reports: list[dict[str, Any]],
+    device_groups: list[dict[str, Any]],
+    location_clusters: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Per-report data-attribute payloads that drive client-side sorting."""
+    keys: list[dict[str, Any]] = [{} for _ in reports]
+
+    for group in device_groups:
+        for img in group.get("images", []):
+            keys[img["index"]]["device_key"] = group["key"]
+            keys[img["index"]]["device_label"] = group["label"]
+
+    for cluster in location_clusters:
+        for img in cluster.get("images", []):
+            keys[img["index"]]["location_key"] = cluster["key"]
+            keys[img["index"]]["location_lat"] = cluster["centroid_lat"]
+            keys[img["index"]]["location_lon"] = cluster["centroid_lon"]
+
+    for idx, report in enumerate(reports):
+        meta = report.get("metadata") or {}
+        raw = next((meta.get(f) for f in _EXIF_TS_FIELDS if meta.get(f)), None)
+        dt = _parse_exif_dt(raw)
+        if dt is not None:
+            keys[idx]["iso_timestamp"] = dt.isoformat()
+            keys[idx]["hour"] = dt.hour
+
+        # Fall back to the per-report fingerprint label when the report is the
+        # only one of its kind (group_by_device returns [] for <2 reports, so
+        # everything would otherwise be unlabelled in the single-upload case).
+        if "device_label" not in keys[idx]:
+            fp = report.get("device_fingerprint") or {}
+            label = fp.get("display_label")
+            if label and label != "Unknown device":
+                keys[idx]["device_label"] = label
+
+    return keys
 
 
 def _humanize_duration(seconds: float) -> str:

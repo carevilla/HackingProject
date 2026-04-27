@@ -12,7 +12,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from .analyzer import analyze_image
-from .correlate import build_timeline, cluster_locations, group_by_device
+from .correlate import build_sort_keys, build_timeline, cluster_locations, group_by_device
 from .demo_data import DEMO_SCENARIOS, build_demo_report
 
 
@@ -81,6 +81,8 @@ def create_app() -> Flask:
                 "No supported images found. Choose one or more JPG/PNG/TIFF/WebP files, or a folder containing them."
             )
 
+        device_groups = group_by_device(reports)
+        location_clusters = cluster_locations(reports)
         return render_template(
             "index.html",
             reports=reports,
@@ -88,9 +90,10 @@ def create_app() -> Flask:
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=None,
             ingest_summary=_summarize_ingest(reports, skipped),
-            device_groups=group_by_device(reports),
-            location_clusters=cluster_locations(reports),
+            device_groups=device_groups,
+            location_clusters=location_clusters,
             timeline=build_timeline(reports),
+            sort_keys=build_sort_keys(reports, device_groups, location_clusters),
         )
 
     @app.post("/demo")
@@ -145,15 +148,18 @@ def create_app() -> Flask:
             if not reports and not errors:
                 errors.append("The loot folder exists, but no supported image files were found.")
 
+        device_groups = group_by_device(reports)
+        location_clusters = cluster_locations(reports)
         return render_template(
             "index.html",
             reports=reports,
             errors=errors,
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=_scan_local_lab(),
-            device_groups=group_by_device(reports),
-            location_clusters=cluster_locations(reports),
+            device_groups=device_groups,
+            location_clusters=location_clusters,
             timeline=build_timeline(reports),
+            sort_keys=build_sort_keys(reports, device_groups, location_clusters),
         )
 
     @app.get("/lab/network")

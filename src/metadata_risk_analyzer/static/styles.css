@@ -299,6 +299,27 @@ button:hover {
   font-family: Georgia, serif;
 }
 
+.results-toolbar-sort-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-right: -0.2rem;
+}
+
+.results-toolbar-select {
+  min-width: auto;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  border-radius: 999px;
+  border: 1px solid rgba(84, 60, 37, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+
 .results-toolbar-btn:hover {
   background: rgba(84, 60, 37, 0.16);
 }
@@ -545,13 +566,30 @@ button:hover {
   word-break: break-word;
 }
 
-.timeline-zoom-controls {
+.timeline-year-bar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.7rem;
   flex-wrap: wrap;
-  margin-top: 0.4rem;
-  margin-bottom: 0.4rem;
+  margin: 0.6rem 0 0.6rem;
+}
+
+.timeline-year-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.timeline-year-select {
+  min-width: 110px;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(84, 60, 37, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  color: var(--ink);
 }
 
 .timeline-status {
@@ -560,60 +598,74 @@ button:hover {
   font-style: italic;
 }
 
-#timeline-strip {
+#timeline-heatmap {
   width: 100%;
-  min-height: 110px;
   margin-top: 0.25rem;
-  padding: 0.5rem 0.25rem;
+  padding: 0.75rem 0.5rem;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid rgba(84, 60, 37, 0.08);
+  overflow-x: auto;
 }
 
-.timeline-strip-svg {
-  cursor: crosshair;
-  user-select: none;
+.timeline-heatmap-svg {
+  display: block;
 }
 
-.timeline-strip-svg circle {
-  cursor: pointer;
+.heatmap-cell {
+  stroke: rgba(84, 60, 37, 0.12);
+  stroke-width: 1;
+  transition: filter 0.12s, stroke 0.12s;
 }
 
-.timeline-legend {
+.heatmap-cell:hover {
+  stroke: var(--accent-dark);
+  stroke-width: 1.5;
+  filter: brightness(1.04);
+}
+
+.heatmap-level-0 { fill: rgba(84, 60, 37, 0.06); }
+.heatmap-level-1 { fill: #f0c19b; }
+.heatmap-level-2 { fill: #d68a52; }
+.heatmap-level-3 { fill: #b14d24; }
+.heatmap-level-4 { fill: #7f3416; }
+
+.timeline-heatmap-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 0.6rem;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-.timeline-legend-item {
-  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  justify-content: flex-end;
 }
 
-.timeline-legend-dot {
+.heatmap-legend-cell {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1.5px solid #fff;
-  box-shadow: 0 0 0 1px rgba(84, 60, 37, 0.2);
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(84, 60, 37, 0.12);
+}
+
+.heatmap-legend-cell.heatmap-level-0 { background: rgba(84, 60, 37, 0.06); }
+.heatmap-legend-cell.heatmap-level-1 { background: #f0c19b; }
+.heatmap-legend-cell.heatmap-level-2 { background: #d68a52; }
+.heatmap-legend-cell.heatmap-level-3 { background: #b14d24; }
+.heatmap-legend-cell.heatmap-level-4 { background: #7f3416; }
+
+.timeline-stat-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+  font-family: "Courier New", Courier, monospace;
 }
 
 .timeline-histograms {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin-top: 1.2rem;
-}
-
-@media (max-width: 720px) {
-  .timeline-histograms {
-    grid-template-columns: 1fr;
-  }
 }
 
 .timeline-hist {
