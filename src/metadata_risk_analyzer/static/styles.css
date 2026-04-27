@@ -337,6 +337,93 @@ button:hover {
   word-break: break-word;
 }
 
+/* ── Geolocation section ─────────────────────────────────── */
+.geo-section .geo-coords {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.8rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.geo-coord-pair {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(84, 60, 37, 0.12);
+}
+
+.geo-copy-btn {
+  justify-self: auto;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(84, 60, 37, 0.08);
+  color: var(--ink);
+  border: 1px solid rgba(84, 60, 37, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: Georgia, serif;
+}
+
+.geo-copy-btn:hover {
+  background: rgba(84, 60, 37, 0.16);
+}
+
+.geo-map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(84, 60, 37, 0.12);
+  box-shadow: 0 6px 20px rgba(73, 52, 33, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.geo-map {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.geo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.geo-btn {
+  display: inline-block;
+  padding: 0.65rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: #fffaf5;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  border: 0;
+  cursor: pointer;
+}
+
+.geo-btn:hover {
+  filter: brightness(1.05);
+}
+
+.geo-btn-secondary {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(84, 60, 37, 0.2);
+}
+
+.geo-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
 /* ── Network map ─────────────────────────────────────────── */
 #network-map-container {
   position: relative;

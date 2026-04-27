@@ -195,6 +195,39 @@
                 </div>
               </div>
 
+              {% set lat = report.metadata.get('gps_latitude') %}
+              {% set lon = report.metadata.get('gps_longitude') %}
+              {% if lat is not none and lon is not none %}
+                <div class="report-section geo-section">
+                  <h3>Geolocation</h3>
+                  <p class="geo-coords">
+                    <span class="geo-coord-pair">{{ lat }}, {{ lon }}</span>
+                    <button type="button"
+                            class="geo-copy-btn"
+                            data-coords="{{ lat }}, {{ lon }}"
+                            title="Copy coordinates">Copy</button>
+                  </p>
+                  <div class="geo-map-wrapper">
+                    <iframe
+                      class="geo-map"
+                      title="Map preview for {{ report.image_path }}"
+                      loading="lazy"
+                      referrerpolicy="no-referrer-when-downgrade"
+                      src="https://www.google.com/maps?q={{ lat }},{{ lon }}&hl=en&z=15&output=embed"></iframe>
+                  </div>
+                  <div class="geo-actions">
+                    <a class="geo-btn"
+                       href="https://www.google.com/maps/search/?api=1&query={{ lat }},{{ lon }}"
+                       target="_blank"
+                       rel="noopener noreferrer">Open in Google Maps</a>
+                    <a class="geo-btn geo-btn-secondary"
+                       href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={{ lat }},{{ lon }}"
+                       target="_blank"
+                       rel="noopener noreferrer">Open Street View</a>
+                  </div>
+                </div>
+              {% endif %}
+
               <div class="report-section">
                 <h3>Findings</h3>
                 <ul class="card-list">
@@ -486,6 +519,26 @@
       document.getElementById("node-id").addEventListener("keydown", e => { if (e.key === "Enter") addNode(); });
 
       window.addEventListener("DOMContentLoaded", initMap);
+
+      // ── Geolocation: copy-coords buttons ────────────────────────────────
+      document.addEventListener("click", (event) => {
+        const btn = event.target.closest(".geo-copy-btn");
+        if (!btn) return;
+        const coords = btn.dataset.coords || "";
+        if (!coords) return;
+        const original = btn.textContent;
+        const flash = (msg) => {
+          btn.textContent = msg;
+          setTimeout(() => { btn.textContent = original; }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(coords)
+            .then(() => flash("Copied"))
+            .catch(() => flash("Copy failed"));
+        } else {
+          flash("Copy unsupported");
+        }
+      });
     })();
     </script>
   </body>
