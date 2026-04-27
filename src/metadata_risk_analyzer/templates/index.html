@@ -19,13 +19,38 @@
 
       <section class="panel upload-panel">
         <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" class="upload-form">
-          <label for="images" class="dropzone">
-            <span class="dropzone-title">Select one or more images</span>
-            <span class="dropzone-copy">Supports JPG, PNG, TIFF, and WebP up to 16 MB.</span>
-            <input id="images" name="images" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp" multiple>
-          </label>
+          <div class="dropzone-grid">
+            <label for="images" class="dropzone">
+              <span class="dropzone-title">Select images</span>
+              <span class="dropzone-copy">One or more JPG, PNG, TIFF, or WebP files.</span>
+              <input id="images" name="images" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp" multiple>
+              <span class="dropzone-hint" data-for="images">No files selected</span>
+            </label>
+            <label for="images-folder" class="dropzone dropzone-folder">
+              <span class="dropzone-title">…or pick a folder</span>
+              <span class="dropzone-copy">Bulk-ingest every image in a directory (subfolders included). Non-image files are skipped automatically.</span>
+              <input id="images-folder" name="images" type="file" webkitdirectory directory mozdirectory multiple>
+              <span class="dropzone-hint" data-for="images-folder">No folder selected</span>
+            </label>
+          </div>
+          <p class="dropzone-copy upload-cap-note">Total upload size up to 256 MB per request.</p>
           <button type="submit">Analyze Metadata</button>
         </form>
+
+        {% if ingest_summary %}
+          <div class="ingest-summary">
+            <span><strong>{{ ingest_summary.analyzed }}</strong> image{{ '' if ingest_summary.analyzed == 1 else 's' }} analyzed</span>
+            {% if ingest_summary.high_risk %}
+              <span class="ingest-pill ingest-pill-high">{{ ingest_summary.high_risk }} High / Critical</span>
+            {% endif %}
+            {% if ingest_summary.with_gps %}
+              <span class="ingest-pill ingest-pill-gps">{{ ingest_summary.with_gps }} with GPS</span>
+            {% endif %}
+            {% if ingest_summary.skipped %}
+              <span class="ingest-pill ingest-pill-skip">{{ ingest_summary.skipped }} skipped (non-image)</span>
+            {% endif %}
+          </div>
+        {% endif %}
 
         {% if errors %}
           <div class="messages error-list">
@@ -181,89 +206,114 @@
       </section>
 
       {% if reports %}
+        <div class="results-toolbar">
+          <p class="report-label" style="margin:0">Reports ({{ reports|length }})</p>
+          <div class="results-toolbar-actions">
+            <button type="button" class="results-toolbar-btn" data-toggle-all="open">Expand all</button>
+            <button type="button" class="results-toolbar-btn" data-toggle-all="close">Collapse all</button>
+          </div>
+        </div>
         <section class="results-grid">
           {% for report in reports %}
+            {% set lat = report.metadata.get('gps_latitude') %}
+            {% set lon = report.metadata.get('gps_longitude') %}
+            {% set has_gps = (lat is not none and lon is not none) %}
+            {% set has_time = report.metadata.get('DateTimeOriginal') or report.metadata.get('DateTime') or report.metadata.get('DateTimeDigitized') %}
+            {% set has_device = report.metadata.get('Make') or report.metadata.get('Model') or report.metadata.get('Software') or report.metadata.get('LensModel') %}
+            {% set has_serial = report.metadata.get('BodySerialNumber') or report.metadata.get('CameraSerialNumber') or report.metadata.get('LensSerialNumber') %}
             <article class="panel report-card">
-              <div class="report-header">
-                <div>
-                  <p class="report-label">Image</p>
-                  <h2>{{ report.image_path }}</h2>
-                </div>
-                <div class="score-pill score-{{ report.risk_level|lower }}">
-                  <span>{{ report.risk_level }}</span>
-                  <strong>{{ report.risk_score }}/100</strong>
-                </div>
-              </div>
-
-              {% set lat = report.metadata.get('gps_latitude') %}
-              {% set lon = report.metadata.get('gps_longitude') %}
-              {% if lat is not none and lon is not none %}
-                <div class="report-section geo-section">
-                  <h3>Geolocation</h3>
-                  <p class="geo-coords">
-                    <span class="geo-coord-pair">{{ lat }}, {{ lon }}</span>
-                    <button type="button"
-                            class="geo-copy-btn"
-                            data-coords="{{ lat }}, {{ lon }}"
-                            title="Copy coordinates">Copy</button>
-                  </p>
-                  <div class="geo-map-wrapper">
-                    <iframe
-                      class="geo-map"
-                      title="Map preview for {{ report.image_path }}"
-                      loading="lazy"
-                      referrerpolicy="no-referrer-when-downgrade"
-                      src="https://www.google.com/maps?q={{ lat }},{{ lon }}&hl=en&z=15&output=embed"></iframe>
-                  </div>
-                  <div class="geo-actions">
-                    <a class="geo-btn"
-                       href="https://www.google.com/maps/search/?api=1&query={{ lat }},{{ lon }}"
-                       target="_blank"
-                       rel="noopener noreferrer">Open in Google Maps</a>
-                    <a class="geo-btn geo-btn-secondary"
-                       href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={{ lat }},{{ lon }}"
-                       target="_blank"
-                       rel="noopener noreferrer">Open Street View</a>
-                  </div>
-                </div>
-              {% endif %}
-
-              <div class="report-section">
-                <h3>Findings</h3>
-                <ul class="card-list">
-                  {% for finding in report.findings %}
-                    <li>
-                      <strong>{{ finding.title }}</strong>
-                      <p>{{ finding.evidence }}</p>
-                      <p class="recommendation">Recommendation: {{ finding.recommendation }}</p>
-                    </li>
-                  {% endfor %}
-                </ul>
-              </div>
-
-              <div class="report-section">
-                <h3>Attack Scenarios</h3>
-                <ul class="card-list">
-                  {% for scenario in report.attack_scenarios %}
-                    <li>
-                      <strong>{{ scenario.title }}</strong>
-                      <p>{{ scenario.description }}</p>
-                    </li>
-                  {% endfor %}
-                </ul>
-              </div>
-
-              <div class="report-section">
-                <h3>Metadata Preview</h3>
-                <dl class="metadata-grid">
-                  {% for key, value in report.metadata.items() %}
-                    <div>
-                      <dt>{{ key }}</dt>
-                      <dd>{{ value }}</dd>
+              <details class="report-details">
+                <summary class="report-summary">
+                  <div class="report-summary-main">
+                    <p class="report-label">Image</p>
+                    <h2 class="report-title">{{ report.image_path }}</h2>
+                    <div class="report-chips">
+                      <span class="report-chip chip-findings">{{ report.findings|length }} finding{{ '' if report.findings|length == 1 else 's' }}</span>
+                      {% if has_gps %}<span class="report-chip chip-gps">GPS</span>{% endif %}
+                      {% if has_time %}<span class="report-chip chip-time">Timestamp</span>{% endif %}
+                      {% if has_device %}<span class="report-chip chip-device">Device</span>{% endif %}
+                      {% if has_serial %}<span class="report-chip chip-serial">Serial</span>{% endif %}
                     </div>
-                  {% endfor %}
-                </dl>
-              </div>
+                  </div>
+                  <div class="report-summary-side">
+                    <div class="score-pill score-{{ report.risk_level|lower }}">
+                      <span>{{ report.risk_level }}</span>
+                      <strong>{{ report.risk_score }}/100</strong>
+                    </div>
+                    <span class="report-toggle" aria-hidden="true"></span>
+                  </div>
+                </summary>
+
+                <div class="report-body">
+                  {% if has_gps %}
+                    <div class="report-section geo-section">
+                      <h3>Geolocation</h3>
+                      <p class="geo-coords">
+                        <span class="geo-coord-pair">{{ lat }}, {{ lon }}</span>
+                        <button type="button"
+                                class="geo-copy-btn"
+                                data-coords="{{ lat }}, {{ lon }}"
+                                title="Copy coordinates">Copy</button>
+                      </p>
+                      <div class="geo-map-wrapper">
+                        <iframe
+                          class="geo-map"
+                          title="Map preview for {{ report.image_path }}"
+                          loading="lazy"
+                          referrerpolicy="no-referrer-when-downgrade"
+                          src="https://www.google.com/maps?q={{ lat }},{{ lon }}&hl=en&z=15&output=embed"></iframe>
+                      </div>
+                      <div class="geo-actions">
+                        <a class="geo-btn"
+                           href="https://www.google.com/maps/search/?api=1&query={{ lat }},{{ lon }}"
+                           target="_blank"
+                           rel="noopener noreferrer">Open in Google Maps</a>
+                        <a class="geo-btn geo-btn-secondary"
+                           href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={{ lat }},{{ lon }}"
+                           target="_blank"
+                           rel="noopener noreferrer">Open Street View</a>
+                      </div>
+                    </div>
+                  {% endif %}
+
+                  <div class="report-section">
+                    <h3>Findings</h3>
+                    <ul class="card-list">
+                      {% for finding in report.findings %}
+                        <li>
+                          <strong>{{ finding.title }}</strong>
+                          <p>{{ finding.evidence }}</p>
+                          <p class="recommendation">Recommendation: {{ finding.recommendation }}</p>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+
+                  <div class="report-section">
+                    <h3>Attack Scenarios</h3>
+                    <ul class="card-list">
+                      {% for scenario in report.attack_scenarios %}
+                        <li>
+                          <strong>{{ scenario.title }}</strong>
+                          <p>{{ scenario.description }}</p>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+
+                  <div class="report-section">
+                    <h3>Metadata Preview</h3>
+                    <dl class="metadata-grid">
+                      {% for key, value in report.metadata.items() %}
+                        <div>
+                          <dt>{{ key }}</dt>
+                          <dd>{{ value }}</dd>
+                        </div>
+                      {% endfor %}
+                    </dl>
+                  </div>
+                </div>
+              </details>
             </article>
           {% endfor %}
         </section>
@@ -519,6 +569,26 @@
       document.getElementById("node-id").addEventListener("keydown", e => { if (e.key === "Enter") addNode(); });
 
       window.addEventListener("DOMContentLoaded", initMap);
+
+      // ── Upload dropzone hints ───────────────────────────────────────────
+      document.querySelectorAll('.dropzone input[type="file"]').forEach((input) => {
+        const hint = document.querySelector(`.dropzone-hint[data-for="${input.id}"]`);
+        if (!hint) return;
+        input.addEventListener("change", () => {
+          const files = input.files || [];
+          if (!files.length) { hint.textContent = "No files selected"; return; }
+          if (files.length === 1) { hint.textContent = files[0].name; return; }
+          hint.textContent = `${files.length} files selected`;
+        });
+      });
+
+      // ── Results toolbar: expand/collapse all ────────────────────────────
+      document.querySelectorAll('[data-toggle-all]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const open = btn.dataset.toggleAll === "open";
+          document.querySelectorAll(".report-details").forEach((d) => { d.open = open; });
+        });
+      });
 
       // ── Geolocation: copy-coords buttons ────────────────────────────────
       document.addEventListener("click", (event) => {

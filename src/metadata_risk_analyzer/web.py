@@ -43,7 +43,7 @@ _custom_links: list[dict] = []
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
 
     @app.get("/")
     def index():
@@ -60,11 +60,13 @@ def create_app() -> Flask:
         uploads = request.files.getlist("images")
         reports = []
         errors: list[str] = []
+        skipped = 0
 
         for upload in uploads:
+            if not upload or not upload.filename:
+                continue
             if not _is_valid_upload(upload):
-                if upload and upload.filename:
-                    errors.append(f"{upload.filename}: unsupported file type.")
+                skipped += 1
                 continue
 
             try:
@@ -73,8 +75,10 @@ def create_app() -> Flask:
             except OSError as exc:
                 errors.append(f"{upload.filename}: {exc}")
 
-        if not uploads or all(not upload.filename for upload in uploads):
-            errors.append("Choose at least one image to analyze.")
+        if not reports and not errors:
+            errors.append(
+                "No supported images found. Choose one or more JPG/PNG/TIFF/WebP files, or a folder containing them."
+            )
 
         return render_template(
             "index.html",
@@ -82,6 +86,7 @@ def create_app() -> Flask:
             errors=errors,
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=None,
+            ingest_summary=_summarize_ingest(reports, skipped),
         )
 
     @app.post("/demo")
@@ -260,8 +265,9 @@ def _is_valid_upload(upload: FileStorage) -> bool:
 
 
 def _analyze_upload(upload: FileStorage):
-    suffix = Path(upload.filename or "").suffix.lower()
-    safe_name = secure_filename(upload.filename or "uploaded-image")
+    raw_name = upload.filename or "uploaded-image"
+    suffix = Path(raw_name).suffix.lower()
+    display_name = Path(raw_name).name or secure_filename(raw_name) or "uploaded-image"
 
     with tempfile.NamedTemporaryFile(prefix="metadata-risk-", suffix=suffix, delete=False) as handle:
         temp_path = Path(handle.name)
@@ -269,12 +275,29 @@ def _analyze_upload(upload: FileStorage):
 
     try:
         report = analyze_image(temp_path)
-        report.image_path = safe_name
-        report.metadata["file_name"] = safe_name
+        report.image_path = display_name
+        report.metadata["file_name"] = display_name
         report.metadata.pop("file_path", None)
         return report
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def _summarize_ingest(reports: list, skipped: int) -> dict[str, int] | None:
+    if not reports and not skipped:
+        return None
+    high_risk = sum(1 for r in reports if r.get("risk_level") in ("High", "Critical"))
+    with_gps = sum(
+        1 for r in reports
+        if r.get("metadata", {}).get("gps_latitude") is not None
+        and r.get("metadata", {}).get("gps_longitude") is not None
+    )
+    return {
+        "analyzed": len(reports),
+        "skipped": skipped,
+        "high_risk": high_risk,
+        "with_gps": with_gps,
+    }
 
 
 def _scan_local_lab() -> list[dict[str, object]]:
