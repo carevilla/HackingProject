@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .analyzer import build_attack_scenarios, build_findings, score_to_level
+from .fingerprint import build_fingerprint
 from .models import ImageReport
 
 
@@ -44,4 +45,5 @@ def build_demo_report(scenario_name: str) -> ImageReport:
         attack_scenarios=scenarios,
         risk_score=min(score, 100),
         risk_level=score_to_level(score),
+        device_fingerprint=build_fingerprint(metadata),
     )

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .fingerprint import DeviceFingerprint
+
 
 @dataclass
 class Finding:
@@ -27,6 +29,7 @@ class ImageReport:
     attack_scenarios: list[AttackScenario] = field(default_factory=list)
     risk_score: int = 0
     risk_level: str = "Low"
+    device_fingerprint: DeviceFingerprint = field(default_factory=DeviceFingerprint)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,4 +54,5 @@ class ImageReport:
                 }
                 for scenario in self.attack_scenarios
             ],
+            "device_fingerprint": self.device_fingerprint.to_dict(),
         }

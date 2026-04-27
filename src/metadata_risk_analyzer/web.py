@@ -12,6 +12,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from .analyzer import analyze_image
+from .correlate import build_timeline, cluster_locations, group_by_device
 from .demo_data import DEMO_SCENARIOS, build_demo_report
 
 
@@ -87,6 +88,9 @@ def create_app() -> Flask:
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=None,
             ingest_summary=_summarize_ingest(reports, skipped),
+            device_groups=group_by_device(reports),
+            location_clusters=cluster_locations(reports),
+            timeline=build_timeline(reports),
         )
 
     @app.post("/demo")
@@ -147,6 +151,9 @@ def create_app() -> Flask:
             errors=errors,
             demo_scenarios=DEMO_SCENARIOS,
             scan_results=_scan_local_lab(),
+            device_groups=group_by_device(reports),
+            location_clusters=cluster_locations(reports),
+            timeline=build_timeline(reports),
         )
 
     @app.get("/lab/network")

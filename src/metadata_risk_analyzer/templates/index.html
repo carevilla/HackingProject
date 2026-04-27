@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Metadata Risk Analyzer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="">
   </head>
   <body>
     <main class="page-shell">
@@ -205,6 +208,154 @@
         </div>
       </section>
 
+      {% if location_clusters %}
+        {% set hotspot_count = location_clusters|selectattr('is_hotspot')|list|length %}
+        {% set total_geo = location_clusters|sum(attribute='count') %}
+        <section class="panel location-map-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Location Map</p>
+            <h2 class="demo-title">
+              {{ total_geo }} geotagged image{{ '' if total_geo == 1 else 's' }}
+              across {{ location_clusters|length }} location{{ '' if location_clusters|length == 1 else 's' }}
+              {% if hotspot_count %} · {{ hotspot_count }} hotspot{{ '' if hotspot_count == 1 else 's' }}{% endif %}
+            </h2>
+            <p class="dropzone-copy">
+              All GPS-tagged images plotted on a single map. A cluster of 3+ photos within ~150m is flagged as a hotspot — these are the locations someone visits often (home, work, school, frequent venues).
+            </p>
+          </div>
+          <div id="location-map" data-clusters='{{ location_clusters|tojson }}'></div>
+          {% if hotspot_count %}
+            <ul class="hotspot-list">
+              {% for c in location_clusters if c.is_hotspot %}
+                <li class="hotspot-item">
+                  <div class="hotspot-info">
+                    <span class="hotspot-coords">{{ c.centroid_lat }}, {{ c.centroid_lon }}</span>
+                    <span class="hotspot-count">{{ c.count }} images · ~{{ c.radius_m|round|int }}m spread</span>
+                  </div>
+                  <a class="hotspot-link"
+                     href="https://www.google.com/maps/search/?api=1&query={{ c.centroid_lat }},{{ c.centroid_lon }}"
+                     target="_blank"
+                     rel="noopener noreferrer">Open in Google Maps</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if timeline %}
+        {% set total_events = timeline.events|length %}
+        {% set max_hour = timeline.hour_histogram|max %}
+        {% set max_weekday = timeline.weekday_histogram|max %}
+        <section class="panel timeline-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Timeline</p>
+            <h2 class="demo-title">{{ total_events }} timestamped image{{ '' if total_events == 1 else 's' }} over {{ timeline.span_human }}</h2>
+            <p class="dropzone-copy">
+              Photos sorted by capture time. Repeating peaks in the hour-of-day or day-of-week distributions reveal routine. Long gaps suggest device-off periods, travel, or selective deletion.
+            </p>
+          </div>
+
+          <div class="timeline-stats">
+            <div class="timeline-stat">
+              <span class="timeline-stat-label">Span</span>
+              <span class="timeline-stat-value">{{ timeline.span_human }}</span>
+            </div>
+            {% if timeline.peak_hour is not none %}
+              <div class="timeline-stat">
+                <span class="timeline-stat-label">Peak hour</span>
+                <span class="timeline-stat-value">{{ '%02d'|format(timeline.peak_hour) }}:00 · {{ timeline.peak_hour_count }}x</span>
+              </div>
+            {% endif %}
+            {% if timeline.peak_weekday is not none %}
+              <div class="timeline-stat">
+                <span class="timeline-stat-label">Peak day</span>
+                <span class="timeline-stat-value">{{ timeline.peak_weekday_name }} · {{ timeline.peak_weekday_count }}x</span>
+              </div>
+            {% endif %}
+            {% if timeline.longest_gap %}
+              <div class="timeline-stat timeline-stat-gap">
+                <span class="timeline-stat-label">Longest gap</span>
+                <span class="timeline-stat-value">{{ timeline.longest_gap.human }}</span>
+              </div>
+            {% endif %}
+            {% if timeline.missing_count %}
+              <div class="timeline-stat">
+                <span class="timeline-stat-label">No timestamp</span>
+                <span class="timeline-stat-value">{{ timeline.missing_count }}</span>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="timeline-zoom-controls">
+            <button type="button" id="timeline-reset" class="results-toolbar-btn" hidden>Reset zoom</button>
+            <span id="timeline-status" class="timeline-status">Drag across the strip below to zoom into a time range.</span>
+          </div>
+          <div id="timeline-strip" data-timeline='{{ timeline|tojson }}'></div>
+          <div id="timeline-legend" class="timeline-legend"></div>
+
+          <div class="timeline-histograms">
+            <div class="timeline-hist">
+              <p class="timeline-hist-title">Hour of day</p>
+              <div class="timeline-bars timeline-bars-24" id="timeline-hour-bars"></div>
+            </div>
+            <div class="timeline-hist">
+              <p class="timeline-hist-title">Day of week</p>
+              <div class="timeline-bars timeline-bars-7" id="timeline-weekday-bars"></div>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if device_groups %}
+        <section class="panel device-groups-panel">
+          <div class="device-groups-header">
+            <p class="report-label">Device Correlation</p>
+            <h2 class="demo-title">{{ device_groups|length }} distinct device{{ '' if device_groups|length == 1 else 's' }} detected across {{ reports|length }} images</h2>
+            <p class="dropzone-copy">
+              Images grouped by inferred camera identity. Body-serial matches are the strongest signal — same physical hardware, every time. Same make + model means the photos came from the same camera type, but not necessarily the same unit.
+            </p>
+          </div>
+          <ul class="device-groups-list">
+            {% for g in device_groups %}
+              <li class="device-group device-group-{{ g.match_strength }}">
+                <details>
+                  <summary>
+                    <div class="dg-summary-main">
+                      <span class="dg-label">{{ g.label }}</span>
+                      <div class="dg-meta">
+                        <span class="fp-class-badge fp-class-{{ g.device_class }}">{{ g.device_class|replace('_',' ')|title }}</span>
+                        <span class="dg-match dg-match-{{ g.match_strength }}">{{ g.match_label }}</span>
+                        {% if g.sublabel %}<span class="dg-sublabel">{{ g.sublabel }}</span>{% endif %}
+                      </div>
+                    </div>
+                    <div class="dg-summary-side">
+                      <span class="dg-count">{{ g.count }} image{{ '' if g.count == 1 else 's' }}</span>
+                      <span class="report-toggle" aria-hidden="true"></span>
+                    </div>
+                  </summary>
+                  <div class="dg-body">
+                    {% if g.software_versions %}
+                      <p class="dg-meta-line"><strong>Software seen:</strong> {{ g.software_versions|join(', ') }}</p>
+                    {% endif %}
+                    {% if g.lenses %}
+                      <p class="dg-meta-line"><strong>Lenses used:</strong> {{ g.lenses|join(', ') }}</p>
+                    {% endif %}
+                    <ul class="dg-images">
+                      {% for img in g.images %}
+                        <li>
+                          <a href="#report-{{ img.index }}" data-target-report="{{ img.index }}">{{ img.path }}</a>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </details>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
       {% if reports %}
         <div class="results-toolbar">
           <p class="report-label" style="margin:0">Reports ({{ reports|length }})</p>
@@ -219,9 +370,10 @@
             {% set lon = report.metadata.get('gps_longitude') %}
             {% set has_gps = (lat is not none and lon is not none) %}
             {% set has_time = report.metadata.get('DateTimeOriginal') or report.metadata.get('DateTime') or report.metadata.get('DateTimeDigitized') %}
-            {% set has_device = report.metadata.get('Make') or report.metadata.get('Model') or report.metadata.get('Software') or report.metadata.get('LensModel') %}
-            {% set has_serial = report.metadata.get('BodySerialNumber') or report.metadata.get('CameraSerialNumber') or report.metadata.get('LensSerialNumber') %}
-            <article class="panel report-card">
+            {% set fp = report.device_fingerprint %}
+            {% set has_device = fp and fp.display_label and fp.display_label != 'Unknown device' %}
+            {% set has_serial = fp and fp.serial_numbers %}
+            <article class="panel report-card" id="report-{{ loop.index0 }}">
               <details class="report-details">
                 <summary class="report-summary">
                   <div class="report-summary-main">
@@ -231,7 +383,7 @@
                       <span class="report-chip chip-findings">{{ report.findings|length }} finding{{ '' if report.findings|length == 1 else 's' }}</span>
                       {% if has_gps %}<span class="report-chip chip-gps">GPS</span>{% endif %}
                       {% if has_time %}<span class="report-chip chip-time">Timestamp</span>{% endif %}
-                      {% if has_device %}<span class="report-chip chip-device">Device</span>{% endif %}
+                      {% if has_device %}<span class="report-chip chip-device" title="Device class: {{ fp.device_class }}">{{ fp.display_label }}</span>{% endif %}
                       {% if has_serial %}<span class="report-chip chip-serial">Serial</span>{% endif %}
                     </div>
                   </div>
@@ -273,6 +425,37 @@
                            target="_blank"
                            rel="noopener noreferrer">Open Street View</a>
                       </div>
+                    </div>
+                  {% endif %}
+
+                  {% if fp and (fp.manufacturer or fp.model or fp.os_software or fp.lens or fp.serial_numbers or fp.host_computer or fp.unique_id) %}
+                    <div class="report-section fingerprint-section">
+                      <h3>Device Fingerprint</h3>
+                      <div class="fp-header">
+                        <div class="fp-identity">
+                          <p class="fp-display-label">{{ fp.display_label }}</p>
+                          <p class="fp-class-line">
+                            <span class="fp-class-badge fp-class-{{ fp.device_class }}">{{ fp.device_class|replace('_',' ')|title }}</span>
+                            <span class="fp-confidence fp-confidence-{{ fp.confidence }}">Confidence: {{ fp.confidence }}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <dl class="fp-grid">
+                        {% if fp.manufacturer %}<div><dt>Manufacturer</dt><dd>{{ fp.manufacturer }}</dd></div>{% endif %}
+                        {% if fp.model %}<div><dt>Model</dt><dd>{{ fp.model }}</dd></div>{% endif %}
+                        {% if fp.os_software %}<div><dt>Software / firmware</dt><dd>{{ fp.os_software }}</dd></div>{% endif %}
+                        {% if fp.lens %}<div><dt>Lens</dt><dd>{{ fp.lens }}</dd></div>{% endif %}
+                        {% if fp.host_computer %}<div><dt>Host computer</dt><dd>{{ fp.host_computer }}</dd></div>{% endif %}
+                        {% if fp.unique_id %}<div><dt>Image unique ID</dt><dd>{{ fp.unique_id }}</dd></div>{% endif %}
+                        {% for key, value in fp.serial_numbers.items() %}
+                          <div><dt>{{ key }}</dt><dd class="fp-serial">{{ value }}</dd></div>
+                        {% endfor %}
+                      </dl>
+                      {% if fp.notes %}
+                        <ul class="fp-notes">
+                          {% for note in fp.notes %}<li>{{ note }}</li>{% endfor %}
+                        </ul>
+                      {% endif %}
                     </div>
                   {% endif %}
 
@@ -320,6 +503,9 @@
       {% endif %}
     </main>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
     <script>
     (function () {
       const NODE_R = { attacker: 28, router: 24, switch: 22, host: 20 };
@@ -580,6 +766,368 @@
           if (files.length === 1) { hint.textContent = files[0].name; return; }
           hint.textContent = `${files.length} files selected`;
         });
+      });
+
+      // ── Timeline: chronological dot plot + histograms with brush-to-zoom ─
+      const TimelineModule = (function () {
+        const SVG_NS = "http://www.w3.org/2000/svg";
+        const PALETTE = ["#b14d24", "#2c5282", "#2f6e49", "#876e1c", "#6b46c1", "#8c1c13", "#4a5568"];
+        const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+        let state = { data: null, deviceColors: {}, range: null, brush: null };
+
+        function init() {
+          const stripEl = document.getElementById("timeline-strip");
+          if (!stripEl) return;
+          let data;
+          try { data = JSON.parse(stripEl.dataset.timeline || "null"); }
+          catch (err) {
+            console.error("timeline: failed to parse data-timeline", err);
+            stripEl.innerHTML = '<p style="padding:1rem;color:var(--critical)">Could not parse timeline data — see console.</p>';
+            return;
+          }
+          if (!data || !data.events || data.events.length < 2) return;
+
+          state.data = data;
+          state.deviceColors = {};
+          let pi = 0;
+          data.events.forEach((e) => {
+            const key = e.device_label || "(unknown)";
+            if (!(key in state.deviceColors)) state.deviceColors[key] = PALETTE[pi++ % PALETTE.length];
+          });
+
+          render();
+          renderLegend();
+
+          const resetBtn = document.getElementById("timeline-reset");
+          if (resetBtn) resetBtn.addEventListener("click", resetZoom);
+        }
+
+        function visibleEvents() {
+          const evs = state.data.events;
+          if (!state.range) return evs;
+          const [a, b] = state.range;
+          return evs.filter((e) => {
+            const t = new Date(e.iso).getTime();
+            return t >= a && t <= b;
+          });
+        }
+
+        function rangeBounds() {
+          if (state.range) return state.range;
+          return [
+            new Date(state.data.earliest).getTime(),
+            new Date(state.data.latest).getTime(),
+          ];
+        }
+
+        function render() {
+          renderStrip();
+          renderHistograms(visibleEvents());
+          renderStatus();
+        }
+
+        function renderStrip() {
+          const stripEl = document.getElementById("timeline-strip");
+          const data = state.data;
+          const [fromMs, toMs] = rangeBounds();
+          const span = Math.max(toMs - fromMs, 1);
+
+          const W = stripEl.clientWidth || 700;
+          const H = 110;
+          const ML = 22, MR = 22, AXIS_Y = 56;
+          const innerW = W - ML - MR;
+
+          const svg = document.createElementNS(SVG_NS, "svg");
+          svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+          svg.setAttribute("width", "100%");
+          svg.setAttribute("height", H);
+          svg.setAttribute("class", "timeline-strip-svg");
+
+          // Longest-gap highlight (only if visible in current range)
+          if (data.longest_gap && data.longest_gap.days >= 1) {
+            const gFrom = new Date(data.longest_gap.start).getTime();
+            const gTo = new Date(data.longest_gap.end).getTime();
+            const visFrom = Math.max(gFrom, fromMs);
+            const visTo = Math.min(gTo, toMs);
+            if (visTo > visFrom) {
+              const gx1 = ML + (visFrom - fromMs) / span * innerW;
+              const gx2 = ML + (visTo - fromMs) / span * innerW;
+              const rect = document.createElementNS(SVG_NS, "rect");
+              rect.setAttribute("x", gx1);
+              rect.setAttribute("y", AXIS_Y - 18);
+              rect.setAttribute("width", Math.max(gx2 - gx1, 2));
+              rect.setAttribute("height", 36);
+              rect.setAttribute("fill", "rgba(140,28,19,0.07)");
+              rect.setAttribute("stroke", "rgba(140,28,19,0.3)");
+              rect.setAttribute("stroke-dasharray", "3 3");
+              rect.setAttribute("pointer-events", "none");
+              const tt = document.createElementNS(SVG_NS, "title");
+              tt.textContent = `Longest gap: ${data.longest_gap.human}`;
+              rect.appendChild(tt);
+              svg.appendChild(rect);
+            }
+          }
+
+          // Axis line
+          const axis = document.createElementNS(SVG_NS, "line");
+          axis.setAttribute("x1", ML);
+          axis.setAttribute("x2", W - MR);
+          axis.setAttribute("y1", AXIS_Y);
+          axis.setAttribute("y2", AXIS_Y);
+          axis.setAttribute("stroke", "rgba(84,60,37,0.3)");
+          axis.setAttribute("stroke-width", "1");
+          axis.setAttribute("pointer-events", "none");
+          svg.appendChild(axis);
+
+          // Date labels reflect the current view range
+          const fmtDate = (ms) => new Date(ms).toISOString().split("T")[0];
+          const startLabel = document.createElementNS(SVG_NS, "text");
+          startLabel.textContent = fmtDate(fromMs);
+          startLabel.setAttribute("x", ML);
+          startLabel.setAttribute("y", H - 12);
+          startLabel.setAttribute("font-size", "11");
+          startLabel.setAttribute("fill", "#64574d");
+          startLabel.setAttribute("font-family", "Georgia, serif");
+          svg.appendChild(startLabel);
+          const endLabel = document.createElementNS(SVG_NS, "text");
+          endLabel.textContent = fmtDate(toMs);
+          endLabel.setAttribute("x", W - MR);
+          endLabel.setAttribute("y", H - 12);
+          endLabel.setAttribute("text-anchor", "end");
+          endLabel.setAttribute("font-size", "11");
+          endLabel.setAttribute("fill", "#64574d");
+          endLabel.setAttribute("font-family", "Georgia, serif");
+          svg.appendChild(endLabel);
+
+          // Markers (only those in current range)
+          state.data.events.forEach((e) => {
+            const t = new Date(e.iso).getTime();
+            if (t < fromMs || t > toMs) return;
+            const x = ML + (t - fromMs) / span * innerW;
+            const dot = document.createElementNS(SVG_NS, "circle");
+            dot.setAttribute("cx", x);
+            dot.setAttribute("cy", AXIS_Y);
+            dot.setAttribute("r", 5);
+            dot.setAttribute("fill", state.deviceColors[e.device_label || "(unknown)"]);
+            dot.setAttribute("fill-opacity", "0.78");
+            dot.setAttribute("stroke", "#fff");
+            dot.setAttribute("stroke-width", "1.5");
+            dot.setAttribute("style", "cursor:pointer");
+            dot.setAttribute("data-target-report", e.index);
+            const tt = document.createElementNS(SVG_NS, "title");
+            tt.textContent = `${e.path}\n${e.display}` + (e.device_label ? `\n${e.device_label}` : "");
+            dot.appendChild(tt);
+            svg.appendChild(dot);
+          });
+
+          // Brush rect placeholder (created on demand during drag)
+          attachBrush(svg, stripEl, ML, MR, AXIS_Y, innerW, fromMs, span, W, H);
+
+          stripEl.innerHTML = "";
+          stripEl.appendChild(svg);
+        }
+
+        function attachBrush(svg, stripEl, ML, MR, AXIS_Y, innerW, fromMs, span, W, H) {
+          let brushStartX = null;
+          let brushRect = null;
+
+          const xToMs = (x) => fromMs + Math.max(0, Math.min(innerW, x - ML)) / innerW * span;
+          const clientToSvgX = (clientX) => {
+            const rect = svg.getBoundingClientRect();
+            const ratio = W / rect.width;
+            return (clientX - rect.left) * ratio;
+          };
+
+          const onDown = (ev) => {
+            // Don't brush when the user is clicking a dot
+            if (ev.target.tagName && ev.target.tagName.toLowerCase() === "circle") return;
+            ev.preventDefault();
+            brushStartX = clientToSvgX(ev.clientX);
+            brushRect = document.createElementNS(SVG_NS, "rect");
+            brushRect.setAttribute("x", brushStartX);
+            brushRect.setAttribute("y", AXIS_Y - 22);
+            brushRect.setAttribute("width", 0);
+            brushRect.setAttribute("height", 44);
+            brushRect.setAttribute("fill", "rgba(177,77,36,0.18)");
+            brushRect.setAttribute("stroke", "rgba(127,52,22,0.55)");
+            brushRect.setAttribute("stroke-dasharray", "4 3");
+            brushRect.setAttribute("pointer-events", "none");
+            svg.appendChild(brushRect);
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp, { once: true });
+          };
+
+          const onMove = (ev) => {
+            if (brushStartX === null || !brushRect) return;
+            const x = clientToSvgX(ev.clientX);
+            const lo = Math.min(brushStartX, x);
+            const hi = Math.max(brushStartX, x);
+            brushRect.setAttribute("x", Math.max(ML, lo));
+            brushRect.setAttribute("width", Math.min(W - MR, hi) - Math.max(ML, lo));
+          };
+
+          const onUp = (ev) => {
+            window.removeEventListener("mousemove", onMove);
+            const x = clientToSvgX(ev.clientX);
+            const lo = Math.min(brushStartX, x);
+            const hi = Math.max(brushStartX, x);
+            brushStartX = null;
+            // Require some minimum width to avoid accidental zooms on a click
+            if (hi - lo < 6) return;
+            const fromMsNew = xToMs(lo);
+            const toMsNew = xToMs(hi);
+            if (toMsNew - fromMsNew < 1000) return;
+            state.range = [fromMsNew, toMsNew];
+            render();
+          };
+
+          svg.addEventListener("mousedown", onDown);
+        }
+
+        function renderHistograms(events) {
+          const hourBins = new Array(24).fill(0);
+          const dayBins = new Array(7).fill(0);
+          events.forEach((e) => {
+            hourBins[e.hour]++;
+            dayBins[e.weekday]++;
+          });
+          const peakHour = events.length ? hourBins.indexOf(Math.max.apply(null, hourBins)) : -1;
+          const peakDay  = events.length ? dayBins.indexOf(Math.max.apply(null, dayBins))  : -1;
+          renderBars(document.getElementById("timeline-hour-bars"), hourBins, peakHour, (i) => String(i).padStart(2, "0") + ":00", (i) => i % 6 === 0 ? String(i).padStart(2, "0") : "");
+          renderBars(document.getElementById("timeline-weekday-bars"), dayBins, peakDay, (i) => WEEKDAY_NAMES[i], (i) => WEEKDAY_NAMES[i]);
+        }
+
+        function renderBars(container, bins, peakIdx, tooltipFn, labelFn) {
+          if (!container) return;
+          const max = Math.max.apply(null, bins) || 0;
+          const html = bins.map((count, i) => {
+            const pct = max ? (count / max * 100) : 0;
+            const peakClass = (i === peakIdx && count > 0) ? " timeline-bar-peak" : "";
+            const noun = count === 1 ? "image" : "images";
+            const label = labelFn(i);
+            const labelHtml = label ? escHtml(label) : "&nbsp;";
+            return `<div class="timeline-bar-col">`
+              + `<div class="timeline-bar${peakClass}" style="height:${pct}%" title="${escHtml(tooltipFn(i))} — ${count} ${noun}"></div>`
+              + `<span class="timeline-bar-label">${labelHtml}</span>`
+              + `</div>`;
+          }).join("");
+          container.innerHTML = html;
+        }
+
+        function renderLegend() {
+          const legendEl = document.getElementById("timeline-legend");
+          if (!legendEl) return;
+          legendEl.innerHTML = Object.entries(state.deviceColors).map(([label, color]) =>
+            `<span class="timeline-legend-item"><span class="timeline-legend-dot" style="background:${color}"></span>${escHtml(label)}</span>`
+          ).join("");
+        }
+
+        function renderStatus() {
+          const statusEl = document.getElementById("timeline-status");
+          const resetBtn = document.getElementById("timeline-reset");
+          if (!statusEl || !resetBtn) return;
+          const total = state.data.events.length;
+          const visible = visibleEvents().length;
+          if (state.range) {
+            resetBtn.hidden = false;
+            const [a, b] = state.range;
+            const fmt = (ms) => new Date(ms).toISOString().split("T")[0];
+            statusEl.textContent = `Zoomed: ${fmt(a)} → ${fmt(b)} · showing ${visible} of ${total} events`;
+          } else {
+            resetBtn.hidden = true;
+            statusEl.textContent = "Drag across the strip below to zoom into a time range.";
+          }
+        }
+
+        function resetZoom() {
+          state.range = null;
+          render();
+        }
+
+        return { init: init };
+      })();
+      window.addEventListener("DOMContentLoaded", TimelineModule.init);
+
+      // ── Location map: plot all geotagged images on a shared Leaflet map ─
+      function initLocationMap() {
+        const mapEl = document.getElementById("location-map");
+        if (!mapEl) return;
+        if (typeof L === "undefined") {
+          mapEl.innerHTML = '<p style="padding:1rem;color:var(--critical)">Map library (Leaflet) failed to load — check the browser console / network panel.</p>';
+          return;
+        }
+        let clusters = [];
+        try {
+          clusters = JSON.parse(mapEl.dataset.clusters || "[]");
+        } catch (err) {
+          console.error("location-map: failed to parse cluster data", err, mapEl.dataset.clusters);
+          mapEl.innerHTML = '<p style="padding:1rem;color:var(--critical)">Could not parse cluster data — see console.</p>';
+          return;
+        }
+        if (!clusters.length) return;
+
+        const map = L.map(mapEl, { scrollWheelZoom: false });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+          maxZoom: 19,
+        }).addTo(map);
+
+        const allPoints = [];
+        const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+        clusters.forEach((cluster) => {
+          if (cluster.is_hotspot) {
+            L.circle([cluster.centroid_lat, cluster.centroid_lon], {
+              radius: Math.max(cluster.radius_m, 80),
+              color: "#b14d24",
+              fillColor: "#b14d24",
+              fillOpacity: 0.12,
+              weight: 1.5,
+            }).addTo(map).bindTooltip(`Hotspot · ${cluster.count} images`, { permanent: false, direction: "top" });
+          }
+
+          cluster.images.forEach((img) => {
+            const marker = L.circleMarker([img.lat, img.lon], {
+              radius: cluster.is_hotspot ? 8 : 6,
+              color: cluster.is_hotspot ? "#7f3416" : "#2c5282",
+              fillColor: cluster.is_hotspot ? "#b14d24" : "#4a7ba7",
+              fillOpacity: 0.85,
+              weight: 2,
+            }).addTo(map);
+
+            const lines = [
+              `<strong>${escHtml(img.path)}</strong>`,
+              `${img.lat.toFixed(5)}, ${img.lon.toFixed(5)}`,
+            ];
+            if (img.timestamp) lines.push(`<em>${escHtml(img.timestamp)}</em>`);
+            if (img.device_label) lines.push(escHtml(img.device_label));
+            lines.push(`<a href="#report-${img.index}" data-target-report="${img.index}">View report &rarr;</a>`);
+            marker.bindPopup(lines.join("<br>"));
+            allPoints.push([img.lat, img.lon]);
+          });
+        });
+
+        if (allPoints.length === 1) {
+          map.setView(allPoints[0], 15);
+        } else {
+          map.fitBounds(allPoints, { padding: [30, 30], maxZoom: 16 });
+        }
+      }
+      window.addEventListener("DOMContentLoaded", initLocationMap);
+
+      // ── Device-group links: open and scroll to target card ──────────────
+      document.addEventListener("click", (e) => {
+        const link = e.target.closest("[data-target-report]");
+        if (!link) return;
+        const idx = link.dataset.targetReport;
+        const card = document.getElementById(`report-${idx}`);
+        if (!card) return;
+        e.preventDefault();
+        const details = card.querySelector("details.report-details");
+        if (details && !details.open) details.open = true;
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
       });
 
       // ── Results toolbar: expand/collapse all ────────────────────────────

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .fingerprint import build_fingerprint
 from .models import AttackScenario, Finding, ImageReport
 
 
@@ -19,6 +20,7 @@ def analyze_image(image_path: str | Path) -> ImageReport:
         attack_scenarios=scenarios,
         risk_score=min(score, 100),
         risk_level=score_to_level(score),
+        device_fingerprint=build_fingerprint(metadata),
     )
 
 
