@@ -85,6 +85,9 @@
               {% for c in location_clusters if c.is_hotspot %}
                 <li class="hotspot-item">
                   <div class="hotspot-info">
+                    {% if c.address and c.address.display_name %}
+                      <span class="hotspot-address">{{ c.address.display_name }}</span>
+                    {% endif %}
                     <span class="hotspot-coords">{{ c.centroid_lat }}, {{ c.centroid_lon }}</span>
                     <span class="hotspot-count">{{ c.count }} images · ~{{ c.radius_m|round|int }}m spread</span>
                   </div>
@@ -261,6 +264,9 @@
                                 data-coords="{{ lat }}, {{ lon }}"
                                 title="Copy coordinates">Copy</button>
                       </p>
+                      {% if report.address and report.address.display_name %}
+                        <p class="geo-address" title="Reverse-geocoded via OpenStreetMap Nominatim">{{ report.address.display_name }}</p>
+                      {% endif %}
                       <div class="geo-map-wrapper">
                         <iframe
                           class="geo-map"
@@ -279,6 +285,69 @@
                            target="_blank"
                            rel="noopener noreferrer">Open Street View</a>
                       </div>
+                    </div>
+                  {% endif %}
+
+                  {% set tamp = report.tampering %}
+                  {% if tamp %}
+                    <div class="report-section tampering-section tampering-verdict-{{ tamp.verdict }}">
+                      <div class="tampering-header">
+                        <h3>Authenticity Check</h3>
+                        <span class="tampering-pill tampering-pill-{{ tamp.verdict }}">{{ tamp.verdict|replace('_',' ')|title }} · {{ tamp.score }}/100</span>
+                      </div>
+                      <p class="tampering-verdict-line">{{ tamp.verdict_label }}</p>
+                      {% if tamp.indicators %}
+                        <ul class="tampering-list">
+                          {% for ind in tamp.indicators %}
+                            <li class="tampering-indicator tampering-severity-{{ ind.severity }}">
+                              <div class="tampering-indicator-head">
+                                <span class="tampering-severity-tag">{{ ind.severity|upper }}</span>
+                                <strong>{{ ind.title }}</strong>
+                              </div>
+                              <p>{{ ind.detail }}</p>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  {% set td = report.thumbnail_diff %}
+                  {% if td and td.has_thumbnail %}
+                    <div class="report-section thumbnail-section thumbnail-verdict-{{ td.verdict }}">
+                      <h3>Embedded Thumbnail Check</h3>
+                      <p class="thumbnail-verdict-line">{{ td.verdict_label }}</p>
+                      <div class="thumbnail-pair">
+                        <figure class="thumbnail-figure">
+                          <img src="{{ td.thumb_b64 }}" alt="Embedded thumbnail" class="thumbnail-img">
+                          <figcaption>
+                            <strong>Embedded thumbnail</strong><br>
+                            <small>{{ td.thumb_dimensions[0] }} × {{ td.thumb_dimensions[1] }} · {{ (td.thumb_size_bytes / 1024)|round(1) }} KB</small>
+                          </figcaption>
+                        </figure>
+                        <figure class="thumbnail-figure">
+                          <img src="{{ td.main_b64 }}" alt="Main image (downscaled)" class="thumbnail-img">
+                          <figcaption>
+                            <strong>Main image (downscaled)</strong><br>
+                            <small>{{ td.main_dimensions[0] }} × {{ td.main_dimensions[1] }} → resampled</small>
+                          </figcaption>
+                        </figure>
+                      </div>
+                      <dl class="thumbnail-metrics">
+                        <div>
+                          <dt>Mean color delta</dt>
+                          <dd>{{ td.mean_color_delta }} <small>(0 = identical · 60+ = suspicious)</small></dd>
+                        </div>
+                        <div>
+                          <dt>Aspect match</dt>
+                          <dd>{{ "Yes" if td.aspect_match else "No" }}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  {% elif td and td.verdict_label %}
+                    <div class="report-section thumbnail-section thumbnail-verdict-no_thumbnail">
+                      <h3>Embedded Thumbnail Check</h3>
+                      <p class="thumbnail-verdict-line">{{ td.verdict_label }}</p>
                     </div>
                   {% endif %}
 
@@ -349,6 +418,81 @@
                       {% endfor %}
                     </dl>
                   </div>
+
+                  {% if report.upload_id %}
+                    <div class="report-section reverse-search-section" data-upload-id="{{ report.upload_id }}">
+                      <h3>Reverse Image Search</h3>
+                      <p class="dropzone-copy">
+                        Two-step workflow (works around the localhost-URL limitation):
+                        <strong>1.</strong> Click <strong>Copy to Clipboard</strong> below.
+                        <strong>2.</strong> Click any search engine to open it in a new tab, then paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> (or <kbd>⌘</kbd>+<kbd>V</kbd>). If clipboard copy fails on your browser, use <strong>Download Copy</strong> and drag the file into the engine instead.
+                      </p>
+                      <div class="reverse-search-actions reverse-search-actions-primary">
+                        <button type="button" class="geo-btn reverse-search-copy-btn">📋 Copy to Clipboard</button>
+                        <a class="geo-btn geo-btn-secondary" href="{{ url_for('raw_image', upload_id=report.upload_id) }}" download>⬇ Download Copy</a>
+                      </div>
+                      <p class="reverse-search-status" hidden></p>
+                      <div class="reverse-search-actions">
+                        <a class="geo-btn geo-btn-secondary" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer">Google Lens</a>
+                        <a class="geo-btn geo-btn-secondary" href="https://www.google.com/imghp" target="_blank" rel="noopener noreferrer">Google Images</a>
+                        <a class="geo-btn geo-btn-secondary" href="https://tineye.com/" target="_blank" rel="noopener noreferrer">TinEye</a>
+                        <a class="geo-btn geo-btn-secondary" href="https://yandex.com/images/" target="_blank" rel="noopener noreferrer">Yandex Images</a>
+                        <a class="geo-btn geo-btn-secondary" href="https://www.bing.com/visualsearch" target="_blank" rel="noopener noreferrer">Bing Visual Search</a>
+                      </div>
+                    </div>
+                  {% endif %}
+
+                  {% if report.spoofable and report.upload_id %}
+                    {% set raw_dt = report.metadata.get('DateTimeOriginal') or report.metadata.get('DateTime') or report.metadata.get('DateTimeDigitized') or '' %}
+                    {% set dt_for_input = '' %}
+                    {% if raw_dt and raw_dt|length >= 16 %}
+                      {% set dt_for_input = raw_dt[:4] ~ '-' ~ raw_dt[5:7] ~ '-' ~ raw_dt[8:10] ~ 'T' ~ raw_dt[11:16] %}
+                    {% endif %}
+                    <div class="report-section spoof-section">
+                      <h3>Edit / Spoof EXIF</h3>
+                      <p class="dropzone-copy">
+                        Modify a copy of this image's EXIF and download it. Useful for sanitizing before sharing or for demonstrating that camera metadata is editable. The original remains unchanged.
+                      </p>
+                      <form class="spoof-card-form spoof-form" data-upload-id="{{ report.upload_id }}">
+                        <input type="hidden" name="mode" value="spoof">
+                        <div class="spoof-fields">
+                          <div class="spoof-field">
+                            <label>Make</label>
+                            <input name="make" type="text" value="{{ report.metadata.get('Make') or '' }}" autocomplete="off">
+                          </div>
+                          <div class="spoof-field">
+                            <label>Model</label>
+                            <input name="model" type="text" value="{{ report.metadata.get('Model') or '' }}" autocomplete="off">
+                          </div>
+                          <div class="spoof-field">
+                            <label>Software / firmware</label>
+                            <input name="software" type="text" value="{{ report.metadata.get('Software') or '' }}" autocomplete="off">
+                          </div>
+                          <div class="spoof-field">
+                            <label>Capture timestamp</label>
+                            <input name="datetime_original" type="datetime-local" value="{{ dt_for_input }}">
+                          </div>
+                          <div class="spoof-field">
+                            <label>Latitude</label>
+                            <input name="latitude" type="number" step="0.000001" value="{{ report.metadata.get('gps_latitude') if report.metadata.get('gps_latitude') is not none else '' }}" autocomplete="off">
+                          </div>
+                          <div class="spoof-field">
+                            <label>Longitude</label>
+                            <input name="longitude" type="number" step="0.000001" value="{{ report.metadata.get('gps_longitude') if report.metadata.get('gps_longitude') is not none else '' }}" autocomplete="off">
+                          </div>
+                          <div class="spoof-field spoof-checks">
+                            <label class="spoof-check"><input type="checkbox" name="strip_gps"> Strip GPS entirely (overrides lat/lon above)</label>
+                            <label class="spoof-check"><input type="checkbox" name="strip_serials"> Strip body / lens serial numbers</label>
+                          </div>
+                        </div>
+                        <div class="spoof-actions">
+                          <button type="submit" class="spoof-submit" data-action="spoof">Apply &amp; Download</button>
+                          <button type="button" class="spoof-sanitize" data-action="sanitize">Strip All EXIF</button>
+                        </div>
+                        <p class="spoof-status" hidden></p>
+                      </form>
+                    </div>
+                  {% endif %}
                 </div>
               </details>
             </article>
@@ -1084,6 +1228,7 @@
             ];
             if (img.timestamp) lines.push(`<em>${escHtml(img.timestamp)}</em>`);
             if (img.device_label) lines.push(escHtml(img.device_label));
+            if (img.address && img.address.display_name) lines.push(`<span class="popup-address">${escHtml(img.address.display_name)}</span>`);
             lines.push(`<a href="#report-${img.index}" data-target-report="${img.index}">View report &rarr;</a>`);
             marker.bindPopup(lines.join("<br>"));
             allPoints.push([img.lat, img.lon]);
@@ -1186,6 +1331,151 @@
           document.querySelectorAll(".report-details").forEach((d) => { d.open = open; });
         });
       });
+
+      // ── Reverse image search: copy image to clipboard ───────────────────
+      // Uses the "lazy ClipboardItem" pattern — pass a Promise<Blob> instead
+      // of awaiting first, so the user-gesture context stays alive while we
+      // fetch the bytes and re-encode to PNG (Chrome/Edge/Firefox only accept
+      // PNG via ClipboardItem). NOTE: we deliberately do NOT open the search
+      // engine here — that would steal focus from the document and break the
+      // clipboard write. Engine links are plain <a target="_blank"> tags.
+      document.addEventListener("click", (event) => {
+        const btn = event.target.closest(".reverse-search-copy-btn");
+        if (!btn) return;
+        event.preventDefault();
+        const section = btn.closest(".reverse-search-section");
+        if (!section) return;
+        const uploadId = section.dataset.uploadId;
+        if (!uploadId) return;
+
+        const status = section.querySelector(".reverse-search-status");
+        const setStatus = (msg, kind) => {
+          if (!status) return;
+          status.hidden = !msg;
+          status.textContent = msg || "";
+          status.className = "reverse-search-status" + (kind ? " reverse-search-status-" + kind : "");
+        };
+
+        if (!navigator.clipboard || !navigator.clipboard.write || !window.ClipboardItem) {
+          setStatus("This browser doesn't support image clipboard writes — use Download Copy instead.", "error");
+          return;
+        }
+
+        // Build a Promise<Blob> for the PNG. Don't await it before calling
+        // clipboard.write — the lazy pattern is what keeps us inside the
+        // user-gesture window.
+        const pngPromise = (async () => {
+          const resp = await fetch(`/raw/${encodeURIComponent(uploadId)}`);
+          if (!resp.ok) throw new Error(`raw image fetch failed: ${resp.status}`);
+          const blob = await resp.blob();
+          const dataUrl = await blobToDataUrl(blob);
+          const img = await loadImage(dataUrl);
+          const maxDim = 4000;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (Math.max(w, h) > maxDim) {
+            const scale = maxDim / Math.max(w, h);
+            w = Math.round(w * scale); h = Math.round(h * scale);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+          if (!pngBlob) throw new Error("canvas toBlob produced null");
+          return pngBlob;
+        })();
+
+        setStatus("Copying image to clipboard…", "info");
+        btn.disabled = true;
+
+        navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })])
+          .then(() => setStatus("Image copied. Click any search engine below, then paste with Ctrl+V (or ⌘+V).", "ok"))
+          .catch((err) => {
+            console.error("clipboard.write failed:", err);
+            const reason = err && err.name === "NotAllowedError"
+              ? "Browser denied clipboard access (window not focused or permission blocked). "
+              : "";
+            setStatus(reason + "Use Download Copy and drag the file into the engine tab instead.", "error");
+          })
+          .finally(() => { btn.disabled = false; });
+      });
+
+      function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(blob);
+        });
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("image load failed"));
+          img.src = src;
+        });
+      }
+
+      // ── Per-card EXIF spoof / sanitize forms ────────────────────────────
+      document.addEventListener("submit", async (event) => {
+        const form = event.target.closest(".spoof-card-form");
+        if (!form) return;
+        event.preventDefault();
+        await runSpoofForm(form, "spoof");
+      });
+      document.addEventListener("click", async (event) => {
+        const btn = event.target.closest(".spoof-sanitize");
+        if (!btn) return;
+        const form = btn.closest(".spoof-card-form");
+        if (!form) return;
+        event.preventDefault();
+        await runSpoofForm(form, "sanitize");
+      });
+
+      async function runSpoofForm(form, mode) {
+        const uploadId = form.dataset.uploadId;
+        if (!uploadId) return;
+        const status = form.querySelector(".spoof-status");
+        const buttons = form.querySelectorAll("button");
+        const setStatus = (msg, kind) => {
+          if (!status) return;
+          status.hidden = !msg;
+          status.textContent = msg || "";
+          status.className = "spoof-status" + (kind ? " spoof-status-" + kind : "");
+        };
+
+        const fd = new FormData(form);
+        fd.set("mode", mode);
+        // FormData omits unchecked boxes; the server treats absent as false, so nothing to do.
+
+        buttons.forEach((b) => (b.disabled = true));
+        setStatus(mode === "sanitize" ? "Stripping EXIF…" : "Applying overrides…", "info");
+        try {
+          const resp = await fetch(`/spoof/${encodeURIComponent(uploadId)}`, { method: "POST", body: fd });
+          if (!resp.ok) {
+            let msg = `Server returned ${resp.status}`;
+            try { msg = (await resp.json()).error || msg; } catch (_) {}
+            setStatus(msg, "error");
+            return;
+          }
+          const blob = await resp.blob();
+          const cd = resp.headers.get("Content-Disposition") || "";
+          const m = cd.match(/filename="?([^";]+)"?/);
+          const filename = m ? m[1] : "modified.jpg";
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          setStatus(`Downloaded ${filename}.`, "ok");
+        } catch (err) {
+          console.error(err);
+          setStatus("Network error — check console.", "error");
+        } finally {
+          buttons.forEach((b) => (b.disabled = false));
+        }
+      }
 
       // ── Geolocation: copy-coords buttons ────────────────────────────────
       document.addEventListener("click", (event) => {

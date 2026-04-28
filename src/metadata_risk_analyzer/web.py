@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import io
 import tempfile
+import uuid
 from pathlib import Path
 import re
 from urllib.parse import urljoin, urlparse
 import urllib.error
 import urllib.request
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
+from . import spoofer
 from .analyzer import analyze_image
 from .correlate import build_sort_keys, build_timeline, cluster_locations, group_by_device
 from .demo_data import DEMO_SCENARIOS, build_demo_report
+from .forensics import analyze_thumbnail, analyze_tampering
+from .geocoder import reverse_geocode
 
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp"}
@@ -41,6 +46,31 @@ LOCAL_LOOT_DIR = Path("labs/local_ctf/loot")
 _custom_nodes: list[dict] = []
 _custom_links: list[dict] = []
 
+# ── Persistent temp store for the most-recent batch of uploaded images so the
+# per-card spoof form can re-read the original bytes. Each new /analyze or
+# /lab/loot call wipes the previous batch, capping disk usage at one batch.
+_UPLOAD_STORE_DIR = Path(tempfile.gettempdir()) / "metadata_risk_uploads"
+_UPLOAD_STORE_DIR.mkdir(parents=True, exist_ok=True)
+_uploaded_images: dict[str, dict] = {}  # upload_id -> {"path": Path, "filename": str}
+
+
+def _clear_upload_store() -> None:
+    for entry in _uploaded_images.values():
+        try:
+            entry["path"].unlink(missing_ok=True)
+        except OSError:
+            pass
+    _uploaded_images.clear()
+
+
+def _store_upload_bytes(image_bytes: bytes, original_name: str) -> str:
+    upload_id = uuid.uuid4().hex
+    suffix = Path(original_name).suffix.lower() or ".bin"
+    path = _UPLOAD_STORE_DIR / f"{upload_id}{suffix}"
+    path.write_bytes(image_bytes)
+    _uploaded_images[upload_id] = {"path": path, "filename": original_name}
+    return upload_id
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -63,6 +93,10 @@ def create_app() -> Flask:
         errors: list[str] = []
         skipped = 0
 
+        # Wipe the previous batch so disk usage is bounded to one batch at a
+        # time. The per-card spoof form references upload_ids from this batch.
+        _clear_upload_store()
+
         for upload in uploads:
             if not upload or not upload.filename:
                 continue
@@ -71,8 +105,8 @@ def create_app() -> Flask:
                 continue
 
             try:
-                report = _analyze_upload(upload)
-                reports.append(report.to_dict())
+                report_dict = _analyze_upload(upload)
+                reports.append(report_dict)
             except OSError as exc:
                 errors.append(f"{upload.filename}: {exc}")
 
@@ -83,6 +117,7 @@ def create_app() -> Flask:
 
         device_groups = group_by_device(reports)
         location_clusters = cluster_locations(reports)
+        _enrich_with_addresses(reports, location_clusters)
         return render_template(
             "index.html",
             reports=reports,
@@ -130,6 +165,8 @@ def create_app() -> Flask:
         reports = []
         errors: list[str] = []
 
+        _clear_upload_store()
+
         if not LOCAL_LOOT_DIR.exists():
             errors.append("No local loot folder found yet. Run the collector first.")
         else:
@@ -137,11 +174,19 @@ def create_app() -> Flask:
                 if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTENSIONS:
                     continue
                 try:
-                    report = analyze_image(path)
+                    upload_id = _store_upload_bytes(path.read_bytes(), path.name)
+                    stored_path = _uploaded_images[upload_id]["path"]
+                    report = analyze_image(stored_path)
                     report.image_path = path.name
                     report.metadata["file_name"] = path.name
                     report.metadata.pop("file_path", None)
-                    reports.append(report.to_dict())
+                    rd = report.to_dict()
+                    rd["upload_id"] = upload_id
+                    rd["spoofable"] = stored_path.suffix.lower() in spoofer.SUPPORTED_EXTENSIONS
+                    thumb = analyze_thumbnail(stored_path)
+                    rd["thumbnail_diff"] = thumb.to_dict()
+                    rd["tampering"] = analyze_tampering(report.metadata, thumb).to_dict()
+                    reports.append(rd)
                 except OSError as exc:
                     errors.append(f"{path.name}: {exc}")
 
@@ -150,6 +195,7 @@ def create_app() -> Flask:
 
         device_groups = group_by_device(reports)
         location_clusters = cluster_locations(reports)
+        _enrich_with_addresses(reports, location_clusters)
         return render_template(
             "index.html",
             reports=reports,
@@ -267,7 +313,76 @@ def create_app() -> Flask:
         custom_ids  = [n["id"] for n in _custom_nodes]
         return jsonify({"all_ids": builtin_ids + custom_ids, "custom": _custom_nodes})
 
+    @app.get("/raw/<upload_id>")
+    def raw_image(upload_id):
+        entry = _uploaded_images.get(upload_id)
+        if not entry or not entry["path"].exists():
+            return jsonify({"error": "Image is no longer available — re-analyze the batch."}), 404
+        # Serve as attachment so the browser triggers a download — the user
+        # then drags this file into a reverse-image-search engine tab.
+        return send_file(
+            str(entry["path"]),
+            as_attachment=True,
+            download_name=entry["filename"],
+        )
+
+    @app.post("/spoof/<upload_id>")
+    def spoof_stored_image(upload_id):
+        entry = _uploaded_images.get(upload_id)
+        if not entry:
+            return jsonify({"error": "Image is no longer available — re-analyze the batch."}), 404
+
+        path = entry["path"]
+        if not path.exists():
+            return jsonify({"error": "Stored image is missing on disk."}), 404
+        if path.suffix.lower() not in spoofer.SUPPORTED_EXTENSIONS:
+            return jsonify({"error": "Spoofer supports JPEG only."}), 415
+
+        image_bytes = path.read_bytes()
+        mode = request.form.get("mode", "spoof")
+
+        try:
+            if mode == "sanitize":
+                new_bytes = spoofer.sanitize(image_bytes)
+                suffix_label = "_sanitized"
+            else:
+                overrides = {
+                    "make":              (request.form.get("make") or "").strip() or None,
+                    "model":             (request.form.get("model") or "").strip() or None,
+                    "software":          (request.form.get("software") or "").strip() or None,
+                    "datetime_original": (request.form.get("datetime_original") or "").strip() or None,
+                    "latitude":          _try_float(request.form.get("latitude")),
+                    "longitude":         _try_float(request.form.get("longitude")),
+                    "strip_gps":         request.form.get("strip_gps") in ("on", "true", "1"),
+                    "strip_serials":     request.form.get("strip_serials") in ("on", "true", "1"),
+                }
+                lat, lon = overrides["latitude"], overrides["longitude"]
+                if (lat is None) != (lon is None):
+                    return jsonify({"error": "Provide both latitude and longitude, or neither."}), 400
+                new_bytes = spoofer.spoof(image_bytes, overrides)
+                suffix_label = "_spoofed"
+        except spoofer.SpoofError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        stem = Path(secure_filename(entry["filename"])).stem or "image"
+        download_name = f"{stem}{suffix_label}.jpg"
+        return send_file(
+            io.BytesIO(new_bytes),
+            mimetype="image/jpeg",
+            as_attachment=True,
+            download_name=download_name,
+        )
+
     return app
+
+
+def _try_float(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_valid_upload(upload: FileStorage) -> bool:
@@ -277,23 +392,72 @@ def _is_valid_upload(upload: FileStorage) -> bool:
     return extension in ALLOWED_EXTENSIONS
 
 
-def _analyze_upload(upload: FileStorage):
+def _analyze_upload(upload: FileStorage) -> dict:
     raw_name = upload.filename or "uploaded-image"
-    suffix = Path(raw_name).suffix.lower()
     display_name = Path(raw_name).name or secure_filename(raw_name) or "uploaded-image"
 
-    with tempfile.NamedTemporaryFile(prefix="metadata-risk-", suffix=suffix, delete=False) as handle:
-        temp_path = Path(handle.name)
-        upload.save(handle)
+    image_bytes = upload.read()
+    upload_id = _store_upload_bytes(image_bytes, display_name)
+    stored_path = _uploaded_images[upload_id]["path"]
 
-    try:
-        report = analyze_image(temp_path)
-        report.image_path = display_name
-        report.metadata["file_name"] = display_name
-        report.metadata.pop("file_path", None)
-        return report
-    finally:
-        temp_path.unlink(missing_ok=True)
+    report = analyze_image(stored_path)
+    report.image_path = display_name
+    report.metadata["file_name"] = display_name
+    report.metadata.pop("file_path", None)
+    report_dict = report.to_dict()
+    report_dict["upload_id"] = upload_id
+    report_dict["spoofable"] = stored_path.suffix.lower() in spoofer.SUPPORTED_EXTENSIONS
+    thumb = analyze_thumbnail(stored_path)
+    report_dict["thumbnail_diff"] = thumb.to_dict()
+    report_dict["tampering"] = analyze_tampering(report.metadata, thumb).to_dict()
+    return report_dict
+
+
+def _enrich_with_addresses(reports: list[dict], location_clusters: list[dict], max_unique_lookups: int = 25) -> None:
+    """Reverse-geocode cluster centroids and per-image GPS coords in place.
+
+    The geocoder cache means many calls become no-ops (folder of photos at the
+    same hotspot only triggers one network request). To bound latency on huge
+    batches we still cap *new* lookups at `max_unique_lookups`; remaining
+    coordinates fall through to whatever the cache happens to have.
+    """
+    seen_keys: set[tuple[float, float]] = set()
+    new_lookups = 0
+
+    def lookup_capped(lat, lon):
+        nonlocal new_lookups
+        if lat is None or lon is None:
+            return None
+        try:
+            key = (round(float(lat), 3), round(float(lon), 3))
+        except (TypeError, ValueError):
+            return None
+        if key in seen_keys:
+            return reverse_geocode(lat, lon)
+        if new_lookups >= max_unique_lookups:
+            return None
+        seen_keys.add(key)
+        new_lookups += 1
+        return reverse_geocode(lat, lon)
+
+    # Cluster centroids first — most informative and small in number
+    for cluster in location_clusters:
+        cluster["address"] = lookup_capped(cluster.get("centroid_lat"), cluster.get("centroid_lon"))
+
+    # Per-image lookups (cluster-adjacent photos hit the cache)
+    for report in reports:
+        meta = report.get("metadata") or {}
+        report["address"] = lookup_capped(meta.get("gps_latitude"), meta.get("gps_longitude"))
+
+    # Propagate addresses into cluster.images so the Leaflet popups can show them
+    address_by_index: dict[int, dict] = {
+        i: r["address"] for i, r in enumerate(reports) if r.get("address")
+    }
+    for cluster in location_clusters:
+        for img in cluster.get("images", []):
+            addr = address_by_index.get(img["index"]) or cluster.get("address")
+            if addr:
+                img["address"] = addr
 
 
 def _summarize_ingest(reports: list, skipped: int) -> dict[str, int] | None:

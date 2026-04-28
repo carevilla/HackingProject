@@ -1079,6 +1079,324 @@ button:hover {
   margin-top: 0.35rem;
 }
 
+/* ── EXIF Spoofer panel ──────────────────────────────────── */
+.spoof-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.spoof-mode {
+  border: 1px solid rgba(84, 60, 37, 0.12);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.55);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.spoof-mode legend {
+  padding: 0 0.4rem;
+  margin: 0;
+}
+
+.spoof-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.spoof-mode-option input {
+  margin-top: 0.25rem;
+}
+
+.spoof-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.spoof-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.spoof-field > label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+  font-family: Georgia, serif;
+}
+
+.spoof-field input[type="text"],
+.spoof-field input[type="number"],
+.spoof-field input[type="datetime-local"] {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(84, 60, 37, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.spoof-field input:focus {
+  border-color: rgba(127, 52, 22, 0.55);
+}
+
+.spoof-field.spoof-checks {
+  grid-column: 1 / -1;
+}
+
+.spoof-check {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 0.9rem;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Authenticity / tampering check ──────────────────────── */
+.tampering-section {
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(84, 60, 37, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+  border-left-width: 4px;
+}
+
+.tampering-verdict-clean           { border-left-color: var(--low); }
+.tampering-verdict-lightly_touched { border-left-color: var(--moderate); }
+.tampering-verdict-likely_edited   { border-left-color: var(--high); }
+.tampering-verdict-heavily_edited  { border-left-color: var(--critical); }
+
+.tampering-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+.tampering-header h3 {
+  margin: 0;
+}
+
+.tampering-pill {
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fffaf5;
+}
+
+.tampering-pill-clean           { background: var(--low); }
+.tampering-pill-lightly_touched { background: var(--moderate); }
+.tampering-pill-likely_edited   { background: var(--high); }
+.tampering-pill-heavily_edited  { background: var(--critical); }
+
+.tampering-verdict-line {
+  margin: 0 0 0.9rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.tampering-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tampering-indicator {
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(84, 60, 37, 0.08);
+  border-left-width: 3px;
+}
+
+.tampering-severity-info   { border-left-color: rgba(84, 60, 37, 0.3); }
+.tampering-severity-low    { border-left-color: var(--low); }
+.tampering-severity-medium { border-left-color: var(--moderate); }
+.tampering-severity-high   { border-left-color: var(--critical); }
+
+.tampering-indicator-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.3rem;
+}
+
+.tampering-severity-tag {
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(84, 60, 37, 0.1);
+  color: var(--muted);
+}
+
+.tampering-severity-low .tampering-severity-tag    { background: rgba(47, 110, 73, 0.16);  color: var(--low); }
+.tampering-severity-medium .tampering-severity-tag { background: rgba(135, 110, 28, 0.16); color: var(--moderate); }
+.tampering-severity-high .tampering-severity-tag   { background: rgba(140, 28, 19, 0.14);  color: var(--critical); }
+
+.tampering-indicator p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* ── Embedded thumbnail check ────────────────────────────── */
+.thumbnail-section {
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(84, 60, 37, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+  border-left-width: 4px;
+}
+
+.thumbnail-verdict-consistent       { border-left-color: var(--low); }
+.thumbnail-verdict-minor_difference { border-left-color: var(--moderate); }
+.thumbnail-verdict-suspicious       { border-left-color: var(--high); }
+.thumbnail-verdict-aspect_mismatch  { border-left-color: var(--critical); }
+.thumbnail-verdict-no_thumbnail     { border-left-color: rgba(84, 60, 37, 0.25); }
+
+.thumbnail-verdict-line {
+  margin: 0 0 1rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.thumbnail-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+@media (max-width: 540px) {
+  .thumbnail-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.thumbnail-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  border: 1px solid rgba(84, 60, 37, 0.08);
+}
+
+.thumbnail-img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(31, 26, 23, 0.04);
+}
+
+.thumbnail-figure figcaption {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.thumbnail-figure figcaption small {
+  color: var(--muted);
+}
+
+.thumbnail-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.thumbnail-metrics div {
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(84, 60, 37, 0.08);
+}
+
+.thumbnail-metrics dt {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.thumbnail-metrics dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.thumbnail-metrics dd small {
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 0.4rem;
+}
+
+/* Per-card spoof submenu (inline inside an expanded report card) */
+.spoof-section {
+  background: rgba(177, 77, 36, 0.04);
+  border: 1px dashed rgba(127, 52, 22, 0.3);
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+}
+
+.spoof-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.spoof-submit {
+  /* uses default warm-orange button styling */
+}
+
+.spoof-sanitize {
+  background: rgba(140, 28, 19, 0.85);
+  color: #fffaf5;
+}
+
+.spoof-status {
+  margin: 0.6rem 0 0;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+}
+
+.spoof-status-info  { background: rgba(84, 60, 37, 0.08);  color: var(--ink); }
+.spoof-status-ok    { background: rgba(47, 110, 73, 0.14); color: var(--low); }
+.spoof-status-error { background: rgba(140, 28, 19, 0.12); color: var(--critical); }
+
 /* ── Geolocation section ─────────────────────────────────── */
 .geo-section .geo-coords {
   display: flex;
@@ -1095,6 +1413,80 @@ button:hover {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(84, 60, 37, 0.12);
+}
+
+.geo-address {
+  margin: 0.25rem 0 0.6rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(177, 77, 36, 0.08);
+  border-left: 3px solid var(--accent);
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.hotspot-address {
+  font-size: 0.92rem;
+  color: var(--ink);
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.popup-address {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: var(--accent-dark);
+}
+
+/* ── Reverse image search section ────────────────────────── */
+.reverse-search-section {
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(84, 60, 37, 0.1);
+  border-left: 4px solid #2c5282;
+}
+
+.reverse-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.reverse-search-actions-primary {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px dashed rgba(84, 60, 37, 0.15);
+}
+
+.reverse-search-copy-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.reverse-search-status {
+  margin: 0.7rem 0 0;
+  font-size: 0.88rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
+  line-height: 1.45;
+}
+
+.reverse-search-status-info  { background: rgba(84, 60, 37, 0.08);  color: var(--ink); }
+.reverse-search-status-ok    { background: rgba(47, 110, 73, 0.14); color: var(--low); }
+.reverse-search-status-error { background: rgba(140, 28, 19, 0.12); color: var(--critical); }
+
+.reverse-search-section kbd {
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: rgba(84, 60, 37, 0.1);
+  border: 1px solid rgba(84, 60, 37, 0.2);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.85em;
+  font-weight: 700;
 }
 
 .geo-copy-btn {

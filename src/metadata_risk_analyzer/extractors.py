@@ -7,6 +7,7 @@ from PIL import ExifTags, Image
 
 
 GPS_IFD_TAG = 0x8825
+EXIF_IFD_TAG = 0x8769
 
 
 def extract_image_metadata(image_path: str | Path) -> dict[str, Any]:
@@ -28,6 +29,13 @@ def extract_image_metadata(image_path: str | Path) -> dict[str, Any]:
         for tag_id, value in exif.items():
             tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
             metadata[tag_name] = _make_json_safe(value)
+
+        # The Exif sub-IFD holds DateTimeOriginal, DateTimeDigitized, lens info,
+        # serial numbers, and similar fields the top-level loop above misses.
+        exif_sub = exif.get_ifd(EXIF_IFD_TAG) if EXIF_IFD_TAG in exif else {}
+        for tag_id, value in exif_sub.items():
+            tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+            metadata.setdefault(tag_name, _make_json_safe(value))
 
         gps_info = exif.get_ifd(GPS_IFD_TAG) if GPS_IFD_TAG in exif else {}
         if gps_info:
